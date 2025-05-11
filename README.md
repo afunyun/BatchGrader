@@ -2,7 +2,11 @@
 
 ## Last updated: 2025-05-11
 
-- Version: 0.2.8 - Initial implementation complete. So far:
+- Version 0.2.9 - Testing underway. Config layer and chunk job abstraction complete.  
+  - Added --config arg, stress tested --file cli arg.
+  - Created testing agenda and a testing script + multiple faulty configs/datasets for testing purposes.
+
+- Version 0.2.8 - Initial implementation complete. So far:
   - Integration: Concurrent Processing in Main Workflow
     - Integrated concurrent batch processing into the main workflow (`process_file`).
     - Now, if forced chunking or token-based splitting is needed, `process_file` routes to `process_file_concurrently` for parallel execution.
@@ -13,21 +17,21 @@
   - Config layer (config_loader.py, config.yaml) and chunk job abstraction (batch_job.py) are complete.
   - The `_generate_chunk_job_objects` helper is implemented and tested for both forced and token-based chunking.
 
-- Version: 0.2.7 - Begin implementation of batched batch jobs (lol)
+- Version 0.2.7 - Begin implementation of batched batch jobs (lol)
 
 > **Note:** Implementation of concurrent batch (multi-job) processing is underway! Soon, BatchGrader will be able to split large datasets into multiple jobs and process them in parallel for much greater speed and scalability. Version 0.3.0 should contain this, assuming everything doesn't explode.
 
-- Version: 0.2.6 - Large update to `token_tracker.py` to allow for tracking token usage and cost over time. Why? if no info i am sad. Also the prices are low enough that if you're not running massive batches you're essentially always seeing 0 for the cost - want to be able to track cost even over a large number of smaller runs. Also added additional methods to `batch_runner.py` to display cumulative statistics. Added CLI arguments for this functionality (toggle/override). Statistics will not appear on unsuccessful runs OR splitting/counting runs. Only successful executions with a response receive get added to the new log and trigger the new stats display. Updated error handling specifically for CLI args - if positioning is incorrect, has more useful error message.
+- Version 0.2.6 - Large update to `token_tracker.py` to allow for tracking token usage and cost over time. Why? if no info i am sad. Also the prices are low enough that if you're not running massive batches you're essentially always seeing 0 for the cost - want to be able to track cost even over a large number of smaller runs. Also added additional methods to `batch_runner.py` to display cumulative statistics. Added CLI arguments for this functionality (toggle/override). Statistics will not appear on unsuccessful runs OR splitting/counting runs. Only successful executions with a response receive get added to the new log and trigger the new stats display. Updated error handling specifically for CLI args - if positioning is incorrect, has more useful error message.
 
-- Version: 0.2.5 - Added `batch_runner.py` to allow for use of the command I provided XD. Update pyproject version because it was a crisp 5 "versions" (updates) behind. Prep for update check method because I want to be able to check for updates. I change things at random and frequently like a boss.
+- Version 0.2.5 - Added `batch_runner.py` to allow for use of the command I provided XD. Update pyproject version because it was a crisp 5 "versions" (updates) behind. Prep for update check method because I want to be able to check for updates. I change things at random and frequently like a boss.
 
-- Version: 0.2.4 - Fixed tiktoken error output to actually raise an exception instead of printing an error to console and then exiting. Deleted redundant docs images (NOOOOO). Update console output to provide more information about the current runtime while the `batch_runner.py` is running - previously it was fairly hard to see what options were actually running. Added `split_token_limit` to config.yaml to allow for splitting input files into chunks that do not exceed the configured token limit. CLI and normal operation now respect this limit rather than the Token Limit if it is applicable.
+- Version 0.2.4 - Fixed tiktoken error output to actually raise an exception instead of printing an error to console and then exiting. Deleted redundant docs images (NOOOOO). Update console output to provide more information about the current runtime while the `batch_runner.py` is running - previously it was fairly hard to see what options were actually running. Added `split_token_limit` to config.yaml to allow for splitting input files into chunks that do not exceed the configured token limit. CLI and normal operation now respect this limit rather than the Token Limit if it is applicable.
 
-- Version: 0.2.3 - Release fixes - everything seems to ...work... on my machine at least. Testing leaves something to be desired. Also managed to annihilate the branches for a second.
+- Version 0.2.3 - Release fixes - everything seems to ...work... on my machine at least. Testing leaves something to be desired. Also managed to annihilate the branches for a second.
 
-- Version: 0.2.2 - Fix multiple input files continuing to run/submit jobs if a reply comes back with errors. (preliminary fix not fully tested)
+- Version 0.2.2 - Fix multiple input files continuing to run/submit jobs if a reply comes back with errors. (preliminary fix not fully tested)
 
-- Version: 0.2.1 - fixed cli args which i managed to put in horribly broken, nice, unified loading logic as well for args
+- Version 0.2.1 - fixed cli args which i managed to put in horribly broken, nice, unified loading logic as well for args
 
 ## Overview
 
@@ -51,7 +55,7 @@ All configuration is managed via simple YAML.
   Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
   (Probably already works tbh, just wary of saying you can do this without actually trying it.)
 
-### IN PROGRESS ###
+### IN PROGRESS
 
 - **Support multiple batches:**
   Optionally submit multiple batches of n token count simultaneously, if desired. Splitting to a desired token count is now supported but we still cannot submit and track multiple branches simultaneously.

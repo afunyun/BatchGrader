@@ -5,6 +5,9 @@ import argparse
 import sys
 
 from pathlib import Path
+import sys
+import os
+from src.logger import logger, BatchGraderLogger
 from data_loader import load_data, save_data
 from evaluator import load_prompt_template
 from config_loader import load_config, CONFIG_DIR, is_examples_file_default
@@ -150,7 +153,7 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
         filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func
     )
     if not jobs:
-        print(f"No data loaded from {filepath}. Skipping.")
+        logger.info(f"No data loaded from {filepath}. Skipping.")
         return None
     max_workers = config.get('max_simultaneous_batches', 2)
     halt_on_failure = config.get('halt_on_chunk_failure', True)
@@ -161,43 +164,39 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
         failure_detected = False
         for future in as_completed(future_to_job):
             job = future_to_job[future]
+            logger.info(f"Chunk {job.chunk_id_str} submitted")
             try:
                 result_job = future.result()
             except Exception as exc:
                 result_job = job
                 result_job.status = "failed"
                 result_job.error_message = str(exc)
+            logger.info(f"Chunk {job.chunk_id_str} started")
+            if result_job.status == "running":
+                logger.info(f"Chunk {job.chunk_id_str} running")
+            if result_job.status == "completed":
+                logger.success(f"Chunk {job.chunk_id_str} completed")
+            if result_job.status == "failed":
+                logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
             completed_jobs.append(result_job)
-            print(result_job.get_status_log_str())
             if result_job.status == "failed" and halt_on_failure:
-                print(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
+                logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
                 failure_detected = True
                 break
         if failure_detected:
             for fut in future_to_job:
                 if not fut.done():
                     fut.cancel()
+        logger.info("All chunks completed. Aggregating results...")
+        result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
+        if result_dfs:
+            combined = pd.concat(result_dfs, ignore_index=True)
+            logger.success(f"Results aggregated. {len(combined)} rows processed.")
+            return combined
+        else:
+            logger.error(f"[FAILURE] All chunks failed for {filepath}.")
+            return None
 
-    result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
-    if result_dfs:
-        combined = pd.concat(result_dfs, ignore_index=True)
-        return combined
-    else:
-        print(f"[FAILURE] All chunks failed for {filepath}.")
-        return None
-
-config = load_config()
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-INPUT_DIR = str(PROJECT_ROOT / config['input_dir'])
-OUTPUT_DIR = str(PROJECT_ROOT / config['output_dir'])
-RESPONSE_FIELD = config['response_field']
-TOKEN_LIMIT = config.get('token_limit', 2_000_000)
-split_token_limit = config.get('split_token_limit', 500_000)
-
-model_name = config['openai_model_name']
-
-os.makedirs(INPUT_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def process_file(filepath):
     """
@@ -218,24 +217,21 @@ def process_file(filepath):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         new_filename = f"{file_root}_{timestamp}{file_ext}"
         output_path = os.path.join(OUTPUT_DIR, new_filename)
-        print(f"Output file already exists. Using new filename: {new_filename}")
+        logger.info(f"Output file already exists. Using new filename: {new_filename}")
     else:
         output_path = base_output_path
 
-    print(f"Processing file: {filepath}")
+    logger.info(f"Processing file: {filepath}")
     df = None
     try:
         df = load_data(filepath)
-        print(f"Loaded {len(df)} rows from {filepath}")
+        logger.info(f"Loaded {len(df)} rows from {filepath}")
 
         examples_dir = config.get('examples_dir')
         if not examples_dir:
             raise ValueError("'examples_dir' not found in config.yaml.")
         project_root = CONFIG_DIR.parent
         abs_examples_path = (project_root / examples_dir).resolve()
-        if not abs_examples_path.exists():
-            raise FileNotFoundError(f"Examples file not found: {abs_examples_path}")
-
         if is_examples_file_default(abs_examples_path):
             system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
         else:
@@ -251,12 +247,17 @@ def process_file(filepath):
 
         try:
             import tiktoken
-            enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
+            model_name = config.get('openai_model_name', 'gpt-4o-mini-2024-07-18')
+            try:
+                enc = tiktoken.encoding_for_model(model_name)
+            except KeyError:
+                logger.warning(f"[WARN] tiktoken does not recognize model '{model_name}', using cl100k_base encoding.")
+                enc = tiktoken.get_encoding("cl100k_base")
         except Exception:
-            print("\n\n############################")
-            print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-            print("RERUN: uv pip install -r requirements.txt")
-            print("############################\n\n")
+            logger.error("\n\n############################")
+            logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+            logger.error("RERUN: uv pip install -r requirements.txt")
+            logger.error("############################\n\n")
             raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
 
         def count_input_tokens_per_row(row, system_prompt_content, response_field, enc):
@@ -279,31 +280,31 @@ def process_file(filepath):
         total_tokens = token_counts.sum()
         avg_tokens = token_counts.mean()
         max_tokens = token_counts.max()
-        print(f"[SUBMITTED TOKENS] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+        logger.info(f"[SUBMITTED TOKENS] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
 
         if total_tokens > TOKEN_LIMIT:
-            print(f"[ERROR] Total submitted tokens ({total_tokens}) exceeds the allowed cap of {TOKEN_LIMIT} for a single batch.")
-            print("Please reduce your batch size or check your usage at https://platform.openai.com/usage.")
-            print("Batch submission halted. No API calls were made.")
+            logger.error(f"[ERROR] Total submitted tokens ({total_tokens}) exceeds the allowed cap of {TOKEN_LIMIT} for a single batch.")
+            logger.error("Please reduce your batch size or check your usage at https://platform.openai.com/usage.")
+            logger.error("Batch submission halted. No API calls were made.")
             try:
                 llm_client = LLMClient()
                 update_token_log(llm_client.api_key, 0)
             except Exception as e:
-                print(f"[WARN] Could not log token usage: {e}")
+                logger.error(f"[WARN] Could not log token usage: {e}")
             return False
         try:
             llm_client = LLMClient()
             update_token_log(llm_client.api_key, int(total_tokens))
         except Exception as e:
-            print(f"[WARN] Could not log token usage: {e}")
+            logger.error(f"[WARN] Could not log token usage: {e}")
 
         if df.empty:
-            print(f"No data loaded from {filepath}. Skipping.")
+            logger.info(f"No data loaded from {filepath}. Skipping.")
             return False
 
         MAX_BATCH_SIZE = 50000
         if len(df) > MAX_BATCH_SIZE:
-            print(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
+            logger.warning(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
             df = df.iloc[:MAX_BATCH_SIZE].copy() 
 
         force_chunk_count = config.get('force_chunk_count', 0)
@@ -318,27 +319,27 @@ def process_file(filepath):
                     df, system_prompt_content, response_field_name=RESPONSE_FIELD, base_filename_for_tagging=filename
                 )
             except Exception as batch_exc:
-                print(f"[ERROR] Batch job failed for {filepath}: {batch_exc}")
+                logger.error(f"[ERROR] Batch job failed for {filepath}: {batch_exc}")
                 return False
 
         save_data(df_with_results.drop(columns=['custom_id'], errors='ignore'), output_path)
-        print(f"Processed {filepath}. Results saved to {output_path}")
-        print(f"Total rows successfully processed: {len(df_with_results)}")
+        logger.success(f"Processed {filepath}. Results saved to {output_path}")
+        logger.success(f"Total rows successfully processed: {len(df_with_results)}")
         error_rows = df_with_results['llm_score'].str.contains('Error', case=False)
         if error_rows.any():
-            print(f"Total rows with errors: {error_rows.sum()}")
+            logger.info(f"Total rows with errors: {error_rows.sum()}")
             if error_rows.sum() == len(df_with_results):
-                print(f"[BATCH FAILURE] All rows failed for {filepath}. Halting further processing.")
+                logger.error(f"[BATCH FAILURE] All rows failed for {filepath}. Halting further processing.")
                 return False
         
         try:
             input_col_name = 'input_tokens'
             output_col_name = 'output_tokens'
             if enc is None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
-                print("\n\n############################")
-                print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-                print("RERUN: uv pip install -r requirements.txt")
-                print("############################\n\n")
+                logger.error("\n\n############################")
+                logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+                logger.error("RERUN: uv pip install -r requirements.txt")
+                logger.error("############################\n\n")
                 raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
             if enc is not None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
                 df_with_results[input_col_name] = df_with_results.apply(lambda row: count_input_tokens_per_row(row, system_prompt_content, RESPONSE_FIELD, enc), axis=1)
@@ -348,14 +349,14 @@ def process_file(filepath):
             model_name = config.get('openai_model_name', 'gpt-4o-2024-08-06')
             try:
                 cost = CostEstimator.estimate_cost(model_name, n_input_tokens, n_output_tokens)
-                print(f"Estimated LLM cost: ${cost:.4f} (input: {n_input_tokens} tokens, output: {n_output_tokens} tokens, model: {model_name})")
+                logger.info(f"Estimated LLM cost: ${cost:.4f} (input: {n_input_tokens} tokens, output: {n_output_tokens} tokens, model: {model_name})")
             except Exception as ce:
-                print(f"Could not estimate cost: {ce}")
+                logger.error(f"Could not estimate cost: {ce}")
         except Exception as cost_exception:
-            print(f"[Cost Estimation Error] {cost_exception}")
+            logger.error(f"[Cost Estimation Error] {cost_exception}")
 
     except Exception as e:
-        print(f"An error occurred while processing {filepath}: {e}")
+        logger.error(f"An error occurred while processing {filepath}: {e}")
         log_basename = os.path.splitext(filename)[0] + ".log"
         log_base_path = os.path.join(OUTPUT_DIR, log_basename)
         if os.path.exists(log_base_path):
@@ -363,15 +364,15 @@ def process_file(filepath):
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             new_log_filename = f"{file_root}_{timestamp}{file_ext}"
             log_path = os.path.join(OUTPUT_DIR, new_log_filename)
-            print(f"Log file already exists. Using new filename: {new_log_filename}")
+            logger.info(f"Log file already exists. Using new filename: {new_log_filename}")
         else:
             log_path = log_base_path
         try:
             with open(log_path, 'w') as f_log:
                 f_log.write(f"Failed to process {filepath}.\nError: {e}\n")
-            print(f"Logged error to {log_path}")
+            logger.info(f"Logged error to {log_path}")
         except Exception as save_err:
-            print(f"Double fail: exception in processing and then in saving error log for {filepath}: {save_err} ... aborting.")
+            logger.error(f"Double fail: exception in processing and then in saving error log for {filepath}: {save_err} ... aborting.")
         return False
 
     return True
@@ -390,37 +391,48 @@ def print_token_cost_stats():
     """
     from datetime import datetime
     today = datetime.now().strftime('%Y-%m-%d')
-    print("\n================= TOKEN USAGE & COST STATS =================")
-    print("ALL TIME:")
+    logger.info("\n================= TOKEN USAGE & COST STATS =================")
+    logger.info("ALL TIME:")
     summary_all = get_token_usage_summary()
     print_token_cost_summary(summary_all)
-    print("\nTODAY:")
+    logger.info("\nTODAY:")
     summary_today = get_token_usage_summary(start_date=today, end_date=today)
     print_token_cost_summary(summary_today)
-    print("===========================================================\n")
+    logger.info("===========================================================\n")
 
 def print_token_cost_summary(summary):
     total_tokens = summary.get('total_tokens', 0)
     total_cost = summary.get('total_cost', 0.0)
     breakdown = summary.get('breakdown', {})
-    print(f"  Total tokens: {total_tokens:,}")
-    print(f"  Total cost: ${total_cost:,.6f}")
+    logger.info(f"  Total tokens: {total_tokens:,}")
+    logger.info(f"  Total cost: ${total_cost:,.6f}")
     if breakdown:
-        print("  Per-model breakdown:")
-        print("    Model           | Tokens      | Cost      | Count")
-        print("    --------------- | ----------- | --------- | -----")
+        logger.info("  Per-model breakdown:")
+        logger.info("    Model           | Tokens      | Cost      | Count")
+        logger.info("    --------------- | ----------- | --------- | -----")
         for model, stats in breakdown.items():
             tokens = stats.get('tokens', 0)
             cost = stats.get('cost', 0.0)
             count = stats.get('count', 0)
-            print(f"    {model:<15} | {tokens:>11,} | ${cost:>8,.4f} | {count:>5}")
+            logger.info(f"    {model:<15} | {tokens:>11,} | ${cost:>8,.4f} | {count:>5}")
 
 if __name__ == "__main__":
+    # --- LOG DIRECTORY HANDLING ---
+    import argparse
+    parser = argparse.ArgumentParser(description="BatchGrader Runner")
+    parser.add_argument('--log_dir', type=str, default=None, help='Directory for log files (default: output/logs or as set by test runner)')
+    # Parse only known args here to check for log_dir
+    args, unknown = parser.parse_known_args()
+    if args.log_dir:
+        # Re-initialize logger to use test or custom log directory
+        logger = BatchGraderLogger(log_dir=args.log_dir)
+    # Now re-parse with full CLI args for rest of script
 
     parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
     parser.add_argument('--count-tokens', action='store_true', help='Count tokens in input file(s) and print stats.')
     parser.add_argument('--split-tokens', action='store_true', help='Split input file(s) into parts not exceeding the configured token limit.')
     parser.add_argument('--file', type=str, default=None, help='Only process the specified file in the input directory.')
+    parser.add_argument('--config', type=str, default=None, help='Path to alternate config YAML file (default: config/config.yaml).')
     parser.add_argument('--costs', action='store_true', help='Show token/cost usage stats and exit.')
     parser.add_argument('--statistics', action='store_true', help='Show API usage stats even in count/split modes.')
 
@@ -428,39 +440,50 @@ if __name__ == "__main__":
         try:
             file_arg_index = sys.argv.index('--file')
             if file_arg_index + 1 >= len(sys.argv) or sys.argv[file_arg_index + 1].startswith('--'):
-                print("usage: batch_runner.py [-h] [--count-tokens] [--split-tokens] [--file FILE] [--costs] [--statistics]")
-                print("batch_runner.py: error: argument --file: expected one argument (the filename). It must be placed immediately after --file.")
-                print("Example: python batch_runner.py --file my_data.csv")
+                logger.error("usage: batch_runner.py [-h] [--count-tokens] [--split-tokens] [--file FILE] [--costs] [--statistics]")
+                logger.error("batch_runner.py: error: argument --file: expected one argument (the filename). It must be placed immediately after --file.")
+                logger.error("Example: python batch_runner.py --file my_data.csv")
                 sys.exit(2)
         except ValueError: 
-            print("severe oof error: basically something is COOKED if this happens") # passes to let us fail naturally as god intended because it's over
+            logger.error("severe oof error: basically something is COOKED if this happens") # passes to let us fail naturally as god intended because it's over
             pass
 
     args = parser.parse_args()
+    config = load_config(args.config)
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    INPUT_DIR = str(PROJECT_ROOT / config['input_dir'])
+    OUTPUT_DIR = str(PROJECT_ROOT / config['output_dir'])
+    RESPONSE_FIELD = config['response_field']
+    TOKEN_LIMIT = config.get('token_limit', 2_000_000)
+    split_token_limit = config.get('split_token_limit', 500_000)
+    model_name = config['openai_model_name']
+
+    os.makedirs(INPUT_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     show_stats = args.statistics or (not args.count_tokens and not args.split_tokens)
 
     llm_client = LLMClient()
     if not llm_client.api_key:
-        print("Error: OPENAI_API_KEY not set in config/config.yaml.")
+        logger.error("Error: OPENAI_API_KEY not set in config/config.yaml.")
         exit(1)
     else:
         tokens_today = get_token_usage_for_day(llm_client.api_key)
         if show_stats:
-            print("\n================= API USAGE =================")
-            print(f"TOTAL TOKENS SUBMITTED TODAY: {tokens_today:,}")
-            print(f"TOKEN LIMIT: {TOKEN_LIMIT}")
-            print(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
-            print(f"SPLIT TOKEN LIMIT: {split_token_limit}")
-            print(f"System is running in {get_request_mode(args)} mode.")
-            print("==============================================\n")
+            logger.info("\n================= API USAGE =================")
+            logger.info(f"TOTAL TOKENS SUBMITTED TODAY: {tokens_today:,}")
+            logger.info(f"TOKEN LIMIT: {TOKEN_LIMIT}")
+            logger.info(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
+            logger.info(f"SPLIT TOKEN LIMIT: {split_token_limit}")
+            logger.info(f"System is running in {get_request_mode(args)} mode.")
+            logger.info("==============================================\n")
 
     if getattr(args, 'costs', False):
         print_token_cost_stats()
         exit(0)
 
-    print(f"Valid INPUT_DIR: {INPUT_DIR}")
-    print(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
+    logger.info(f"Valid INPUT_DIR: {INPUT_DIR}")
+    logger.info(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
 
     from pathlib import Path
     def resolve_and_load_input_file(file_arg):
@@ -479,7 +502,7 @@ if __name__ == "__main__":
         else:
             resolved_path = os.path.join(INPUT_DIR, file_arg)
         if not os.path.exists(resolved_path):
-            print(f"File {file_arg} not found at {resolved_path}.")
+            logger.error(f"File {file_arg} not found at {resolved_path}.")
             exit(1)
         df = load_data(resolved_path)
         return resolved_path, df
@@ -495,7 +518,7 @@ if __name__ == "__main__":
                 resolved_path, df = resolve_and_load_input_file(file_to_process)
                 files_found.append((resolved_path, df))
     if not files_found:
-        print(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats please reformat.)")
+        logger.info(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats please reformat.)")
         exit(0)
 
     def get_token_counter(system_prompt_content, response_field, enc):
@@ -508,7 +531,7 @@ if __name__ == "__main__":
 
     for resolved_path, df in files_found:
         try:
-            print(f"\nProcessing file: {resolved_path}")
+            logger.info(f"\nProcessing file: {resolved_path}")
             
             examples_dir = config.get('examples_dir')
             if not examples_dir:
@@ -532,46 +555,46 @@ if __name__ == "__main__":
                 import tiktoken
                 enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
             except Exception:
-                print("\n\n############################")
-                print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-                print("RERUN: uv pip install -r requirements.txt")
-                print("############################\n\n")
+                logger.error("\n\n############################")
+                logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+                logger.error("RERUN: uv pip install -r requirements.txt")
+                logger.error("############################\n\n")
                 raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
 
             if args.count_tokens or args.split_tokens:
                 if enc is None:
-                    print("\n\n############################")
-                    print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-                    print("RERUN: uv pip install -r requirements.txt")
-                    print("############################\n\n")
+                    logger.error("\n\n############################")
+                    logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+                    logger.error("RERUN: uv pip install -r requirements.txt")
+                    logger.error("############################\n\n")
                     raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
                 token_counter = get_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
                 token_counts = df.apply(token_counter, axis=1)
                 total_tokens = token_counts.sum()
                 avg_tokens = token_counts.mean()
                 max_tokens = token_counts.max()
-                print(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+                logger.info(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
                 if args.split_tokens:
                     display_name = os.path.basename(resolved_path)
                     if total_tokens <= TOKEN_LIMIT:
-                        print(f"File {display_name} does not exceed the token limit. No split needed.")
+                        logger.info(f"File {display_name} does not exceed the token limit. No split needed.")
                     else:
-                        print(f"Splitting {display_name} into chunks not exceeding {split_token_limit} tokens...")
+                        logger.info(f"Splitting {display_name} into chunks not exceeding {split_token_limit} tokens...")
                         output_files, token_counts = split_file_by_token_limit(resolved_path, split_token_limit, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
-                        print(f"Split complete. Output files: {output_files}")
+                        logger.info(f"Split complete. Output files: {output_files}")
                         for out_file, tok_count in zip(output_files, token_counts):
-                            print(f"Output file: {out_file} | Tokens: {tok_count}")
+                            logger.info(f"Output file: {out_file} | Tokens: {tok_count}")
                 continue
             # Fastest fix I ever done did (2025-05-11). This prevents submitting further batches if one fails. Halts immediately. RIP my poor API credits.
             ok = process_file(resolved_path)
             if not ok:
-                print(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")
+                logger.error(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")
                 break
         except Exception as e:
-            print(f"[BATCH HALTED] Error processing {resolved_path}: {e}")
-            print("Halting further batch processing due to failure.")
+            logger.error(f"[BATCH HALTED] Error processing {resolved_path}: {e}")
+            logger.error("Halting further batch processing due to failure.")
             break
-    print("Batch finished processing.")
+    logger.success("Batch finished processing.\n")
 
     if show_stats:
         print_token_cost_stats()

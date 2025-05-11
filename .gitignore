@@ -12,7 +12,8 @@ output/*.csv
 output/*.json
 output/*.jsonl
 output/*.log
-docs/scratchpad.md 
+docs/scratchpad.md
+tests/testing_agenda.md
 
 # temp files
 __pycache__/
@@ -25,3 +26,4 @@ __pycache__/
 # editor related
 .vscode/
 .markdownlint.json
+tests/output/
