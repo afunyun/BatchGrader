@@ -2,6 +2,14 @@
 
 ## Last updated: 2025-05-11
 
+- Version 0.2.10 - Directory naming standardization: input/, output/, logs/ (Singular)
+  - Renamed `tests/test_inputs/` → `tests/input/` and `tests/test_outputs/` → `tests/output/`.
+  - Added `.keep` files to ensure important directories exist in both production and test environments.
+  - Updated all test configs and code references to match the new convention.
+  - Added `.gitignore` to reflect the new test output directory.
+  - Tests 3/5 are complete and functional. Rerun is in order due to changes and hopefully all 5 will run.
+  - ##TODO: Chasing a possible bug in the historical token logging.
+
 - Version 0.2.9 - Testing underway. Config layer and chunk job abstraction complete.  
   - Added --config arg, stress tested --file cli arg.
   - Created testing agenda and a testing script + multiple faulty configs/datasets for testing purposes.
