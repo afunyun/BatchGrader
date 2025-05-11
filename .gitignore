@@ -24,3 +24,5 @@ __pycache__/
 # editor related
 .vscode/
 .markdownlint.json
+output/logs/*.log
+tests/output
