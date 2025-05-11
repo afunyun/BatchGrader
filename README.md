@@ -2,6 +2,21 @@
 
 ## Last updated: 2025-05-11
 
+- Version: 0.2.8 - Initial implementation complete. So far:
+  - Integration: Concurrent Processing in Main Workflow
+    - Integrated concurrent batch processing into the main workflow (`process_file`).
+    - Now, if forced chunking or token-based splitting is needed, `process_file` routes to `process_file_concurrently` for parallel execution.
+    - Otherwise, it uses the legacy single-batch logic for backward compatibility.
+  - All results and errors are saved and logged as before.
+  - The system is now ready for targeted testing of both single-batch and concurrent batch modes.
+  - Implementation of the concurrent batch job system has begun.
+  - Config layer (config_loader.py, config.yaml) and chunk job abstraction (batch_job.py) are complete.
+  - The `_generate_chunk_job_objects` helper is implemented and tested for both forced and token-based chunking.
+
+- Version: 0.2.7 - Begin implementation of batched batch jobs (lol)
+
+> **Note:** Implementation of concurrent batch (multi-job) processing is underway! Soon, BatchGrader will be able to split large datasets into multiple jobs and process them in parallel for much greater speed and scalability. Version 0.3.0 should contain this, assuming everything doesn't explode.
+
 - Version: 0.2.6 - Large update to `token_tracker.py` to allow for tracking token usage and cost over time. Why? if no info i am sad. Also the prices are low enough that if you're not running massive batches you're essentially always seeing 0 for the cost - want to be able to track cost even over a large number of smaller runs. Also added additional methods to `batch_runner.py` to display cumulative statistics. Added CLI arguments for this functionality (toggle/override). Statistics will not appear on unsuccessful runs OR splitting/counting runs. Only successful executions with a response receive get added to the new log and trigger the new stats display. Updated error handling specifically for CLI args - if positioning is incorrect, has more useful error message.
 
 - Version: 0.2.5 - Added `batch_runner.py` to allow for use of the command I provided XD. Update pyproject version because it was a crisp 5 "versions" (updates) behind. Prep for update check method because I want to be able to check for updates. I change things at random and frequently like a boss.

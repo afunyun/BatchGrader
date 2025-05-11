@@ -7,11 +7,13 @@ CONFIG_PATH = CONFIG_DIR / 'config.yaml'
 PROMPTS_PATH = CONFIG_DIR / 'prompts.yaml'
 
 DEFAULT_CONFIG = {
+    'max_simultaneous_batches': 2,  # TESTING Number of parallel batch jobs per input file (concurrent chunk processing)
+    'force_chunk_count': 0,         # TESTING If >1, forcibly split input into this many chunks regardless of token limits (for speed)
+    'halt_on_chunk_failure': True,  # TESTING If True, aborts remaining chunks for a file if any chunk fails critically
     'input_dir': '../input',
     'output_dir': '../output',
     'examples_dir': '../examples/examples.txt',
     'openai_model_name': 'gpt-4o-mini-2024-07-18',
-    # only use if you hate security (like i did in the first versions lol)
     # system will pull from environment variables FIRST if it's set there.
     # openai_api_key: YOUR_OPENAI_API_KEY_HERE
     'poll_interval_seconds': 60,

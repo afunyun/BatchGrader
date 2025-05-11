@@ -12,6 +12,179 @@ from llm_client import LLMClient
 from cost_estimator import CostEstimator
 from token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary
 from input_splitter import split_file_by_token_limit
+from batch_job import BatchJob
+import tempfile
+
+
+def _generate_chunk_job_objects(
+    original_filepath,
+    config,
+    system_prompt_content,
+    response_field,
+    llm_model_name,
+    api_key_prefix,
+    tiktoken_encoding_func
+):
+    """
+    Splits the original input file into chunks according to config (forced chunking or token-based),
+    and returns a list of BatchJob objects for each chunk.
+
+    Args:
+        original_filepath (str): Path to the original input file.
+        config (dict): Loaded configuration.
+        system_prompt_content (str): The prompt to use for all chunks.
+        response_field (str): The column to evaluate.
+        llm_model_name (str): Model name for LLM API.
+        api_key_prefix (str): API key prefix for logging.
+        tiktoken_encoding_func: tiktoken.Encoding object for token counting.
+    Returns:
+        List[BatchJob]: One per chunk, or empty if input is empty.
+    """
+    import pandas as pd
+    import os
+
+    jobs = []
+    force_chunk_count = config.get('force_chunk_count', 0)
+    input_dir = os.path.dirname(original_filepath)
+    base_name, ext = os.path.splitext(os.path.basename(original_filepath))
+    df = pd.read_csv(original_filepath) if ext.lower() == '.csv' else pd.read_json(original_filepath, lines=ext.lower() == '.jsonl')
+
+    if df.empty:
+        return []
+
+    if force_chunk_count and force_chunk_count > 1:
+        chunk_size = len(df) // force_chunk_count
+        for i in range(force_chunk_count):
+            start_idx = i * chunk_size
+            end_idx = start_idx + chunk_size if i < force_chunk_count - 1 else len(df)
+            chunk_df = df.iloc[start_idx:end_idx].copy()
+            if chunk_df.empty:
+                continue
+            # Save chunk to temp file
+            with tempfile.NamedTemporaryFile(delete=False, dir=input_dir, suffix=ext, prefix=f"{base_name}_forcedchunk_{i+1}_of_{force_chunk_count}_") as tmp_f:
+                if ext.lower() == '.csv':
+                    chunk_df.to_csv(tmp_f.name, index=False)
+                else:
+                    chunk_df.to_json(tmp_f.name, orient='records', lines=(ext.lower() == '.jsonl'))
+                chunk_path = tmp_f.name
+            chunk_id_str = f"forced_{i+1}_of_{force_chunk_count}"
+            jobs.append(BatchJob(
+                chunk_data_identifier=chunk_path,
+                chunk_df=chunk_df,
+                system_prompt=system_prompt_content,
+                response_field=response_field,
+                original_source_file=os.path.basename(original_filepath),
+                chunk_id_str=chunk_id_str,
+                llm_model=llm_model_name,
+                api_key_prefix=api_key_prefix
+            ))
+    else:
+        def count_tokens_fn(row):
+            sys_tokens = len(tiktoken_encoding_func.encode(system_prompt_content))
+            user_prompt = f"Please evaluate the following text: {str(row[response_field])}"
+            user_tokens = len(tiktoken_encoding_func.encode(user_prompt))
+            return sys_tokens + user_tokens
+        split_token_limit = config.get('split_token_limit', 500_000)
+        split_row_limit = config.get('split_row_limit', None)
+        output_dir = input_dir
+        file_prefix = f"{base_name}_split"
+        chunk_files, _ = split_file_by_token_limit(
+            original_filepath,
+            token_limit=split_token_limit,
+            count_tokens_fn=count_tokens_fn,
+            response_field=response_field,
+            row_limit=split_row_limit,
+            output_dir=output_dir,
+            file_prefix=file_prefix
+        )
+        for idx, chunk_path in enumerate(chunk_files):
+            chunk_ext = os.path.splitext(chunk_path)[1].lower()
+            chunk_df = pd.read_csv(chunk_path) if chunk_ext == '.csv' else pd.read_json(chunk_path, lines=chunk_ext == '.jsonl')
+            if chunk_df.empty:
+                continue
+            chunk_id_str = f"split_{idx+1}_of_{len(chunk_files)}"
+            jobs.append(BatchJob(
+                chunk_data_identifier=chunk_path,
+                chunk_df=chunk_df,
+                system_prompt=system_prompt_content,
+                response_field=response_field,
+                original_source_file=os.path.basename(original_filepath),
+                chunk_id_str=chunk_id_str,
+                llm_model=llm_model_name,
+                api_key_prefix=api_key_prefix
+            ))
+    return jobs
+
+
+def _execute_single_batch_job_task(batch_job, llm_client, response_field_name):
+    """
+    Worker function to process a single BatchJob chunk.
+    Updates batch_job status and results in place.
+    """
+    try:
+        batch_job.status = "running"
+        df_with_results = llm_client.run_batch_job(
+            batch_job.chunk_df,
+            batch_job.system_prompt,
+            response_field_name=response_field_name,
+            base_filename_for_tagging=batch_job.chunk_id_str
+        )
+        batch_job.results_df = df_with_results
+        batch_job.status = "completed"
+    except Exception as exc:
+        batch_job.status = "failed"
+        batch_job.error_message = str(exc)
+    return batch_job
+
+
+def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
+    """
+    Orchestrates concurrent processing of a file by splitting into chunks and running jobs in parallel.
+    Respects max_simultaneous_batches and halt_on_chunk_failure config settings.
+    Aggregates results and returns a combined DataFrame, or None if all chunks fail.
+    """
+    import pandas as pd
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from llm_client import LLMClient
+    jobs = _generate_chunk_job_objects(
+        filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func
+    )
+    if not jobs:
+        print(f"No data loaded from {filepath}. Skipping.")
+        return None
+    max_workers = config.get('max_simultaneous_batches', 2)
+    halt_on_failure = config.get('halt_on_chunk_failure', True)
+    completed_jobs = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        llm_client = LLMClient()
+        future_to_job = {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field): job for job in jobs}
+        failure_detected = False
+        for future in as_completed(future_to_job):
+            job = future_to_job[future]
+            try:
+                result_job = future.result()
+            except Exception as exc:
+                result_job = job
+                result_job.status = "failed"
+                result_job.error_message = str(exc)
+            completed_jobs.append(result_job)
+            print(result_job.get_status_log_str())
+            if result_job.status == "failed" and halt_on_failure:
+                print(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
+                failure_detected = True
+                break
+        if failure_detected:
+            for fut in future_to_job:
+                if not fut.done():
+                    fut.cancel()
+
+    result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
+    if result_dfs:
+        combined = pd.concat(result_dfs, ignore_index=True)
+        return combined
+    else:
+        print(f"[FAILURE] All chunks failed for {filepath}.")
+        return None
 
 config = load_config()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -131,16 +304,23 @@ def process_file(filepath):
         MAX_BATCH_SIZE = 50000
         if len(df) > MAX_BATCH_SIZE:
             print(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
-            df = df.iloc[:MAX_BATCH_SIZE].copy() ##TODO - submit the split batches and monitor all simultaneously.
+            df = df.iloc[:MAX_BATCH_SIZE].copy() 
 
-        llm_client = LLMClient()
-        try:
-            df_with_results = llm_client.run_batch_job(
-                df, system_prompt_content, response_field_name=RESPONSE_FIELD, base_filename_for_tagging=filename
+        force_chunk_count = config.get('force_chunk_count', 0)
+        if force_chunk_count > 1 or config.get('split_token_limit', 500_000) < total_tokens:
+            df_with_results = process_file_concurrently(
+                filepath, config, system_prompt_content, RESPONSE_FIELD, model_name, llm_client.api_key, enc
             )
-        except Exception as batch_exc:
-            print(f"[ERROR] Batch job failed for {filepath}: {batch_exc}")
-            return False
+        else:
+            llm_client = LLMClient()
+            try:
+                df_with_results = llm_client.run_batch_job(
+                    df, system_prompt_content, response_field_name=RESPONSE_FIELD, base_filename_for_tagging=filename
+                )
+            except Exception as batch_exc:
+                print(f"[ERROR] Batch job failed for {filepath}: {batch_exc}")
+                return False
+
         save_data(df_with_results.drop(columns=['custom_id'], errors='ignore'), output_path)
         print(f"Processed {filepath}. Results saved to {output_path}")
         print(f"Total rows successfully processed: {len(df_with_results)}")
