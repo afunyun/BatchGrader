@@ -1,0 +1,9 @@
+# Example BatchGrader config.yaml
+input_dir: input
+output_dir: output
+openai_model_name: gpt-4o-mini-2024-07-18
+poll_interval_seconds: 30
+max_tokens_per_response: 1000
+response_field: assistant_content
+batch_api_endpoint: /v1/chat/completions
+examples_dir: examples/examples.txt

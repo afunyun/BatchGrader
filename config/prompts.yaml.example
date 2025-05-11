@@ -1,0 +1,15 @@
+# Example BatchGrader prompts.yaml
+batch_evaluation_prompt: |
+  Please evaluate the following text and provide a score from 1 to 10 based on the provided examples.
+  {dynamic_examples}
+  Text: {input}
+  Score:
+batch_evaluation_prompt_generic: |
+  You are an evaluator. Given the following message, rate its overall quality on a scale of 1 to 5.
+  The scale is as follows:
+  5 - Excellent
+  4 - Good
+  3 - Average
+  2 - Poor
+  1 - Very poor
+  Output only the numerical score.
