@@ -2,13 +2,19 @@
 
 ## Last updated: 2025-05-11
 
+- Version 0.2.11 - Logging fixes (not the token logging tho havent looked there yet), still on the list, moving TODO up here for clarity: #TODO: Chasing a possible bug in the historical token logging.
+  - Logger always writes a startup message to avoid empty logs
+  - Logging colour coding + console output is working perfectly
+  - All error/exit paths now log to file before exiting w/ new logger
+  - Tests seem to be functioning, CLI args working properly, tests succeeding
+  - Directory structure has been repaired & is standard now.
+
 - Version 0.2.10 - Directory naming standardization: input/, output/, logs/ (Singular)
   - Renamed `tests/test_inputs/` → `tests/input/` and `tests/test_outputs/` → `tests/output/`.
   - Added `.keep` files to ensure important directories exist in both production and test environments.
   - Updated all test configs and code references to match the new convention.
   - Added `.gitignore` to reflect the new test output directory.
   - Tests 3/5 are complete and functional. Rerun is in order due to changes and hopefully all 5 will run.
-  - ##TODO: Chasing a possible bug in the historical token logging.
 
 - Version 0.2.9 - Testing underway. Config layer and chunk job abstraction complete.  
   - Added --config arg, stress tested --file cli arg.
