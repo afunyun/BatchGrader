@@ -2,9 +2,11 @@
 
 ## Last updated: 2025-05-11
 
-Version: 0.2.3 - Release fixes - everything seems to ...work... on my machine at least. Testing leaves something to be desired. Also managed to annihilate the branches for a second.
-Version: 0.2.2 - Fix multiple input files continuing to run/submit jobs if a reply comes back with errors. (preliminary fix not fully tested)
-Version: 0.2.1 - fixed cli args which i managed to put in horribly broken, nice, unified loading logic as well for args
+- Version: 0.2.3 - Release fixes - everything seems to ...work... on my machine at least. Testing leaves something to be desired. Also managed to annihilate the branches for a second.
+
+- Version: 0.2.2 - Fix multiple input files continuing to run/submit jobs if a reply comes back with errors. (preliminary fix not fully tested)
+
+- Version: 0.2.1 - fixed cli args which i managed to put in horribly broken, nice, unified loading logic as well for args
 
 ## Overview
 
