@@ -3,7 +3,7 @@ name = "batchgrader"
 version = "0.2.5"
 description = "Simple cli/config based batch job tool for OpenAI API."
 authors = [
-    {name = "afunyun", email = "afunyun@gmail.com"}
+    {name = "afunyun", email = "github@afjaun.mozmail.com"}
 ]
 license = {text = "MIT"}
 readme = "README.md"
