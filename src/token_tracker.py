@@ -95,7 +95,7 @@ def log_token_usage_event(api_key: str, model: str, input_tokens: int, output_to
     else:
         input_price = pricing[model]['input']
         output_price = pricing[model]['output']
-    # Pricing is per 1M tokens, so divide by 1_000_000.0
+        
     cost = (input_tokens * input_price + output_tokens * output_price) / 1_000_000.0
     event = {
         'timestamp': timestamp or datetime.now().isoformat(),

@@ -2,6 +2,7 @@ import os
 import uuid
 import datetime
 import argparse
+import sys
 
 from pathlib import Path
 from data_loader import load_data, save_data
@@ -242,8 +243,21 @@ if __name__ == "__main__":
     parser.add_argument('--file', type=str, default=None, help='Only process the specified file in the input directory.')
     parser.add_argument('--costs', action='store_true', help='Show token/cost usage stats and exit.')
     parser.add_argument('--statistics', action='store_true', help='Show API usage stats even in count/split modes.')
+
+    if '--file' in sys.argv:
+        try:
+            file_arg_index = sys.argv.index('--file')
+            if file_arg_index + 1 >= len(sys.argv) or sys.argv[file_arg_index + 1].startswith('--'):
+                print("usage: batch_runner.py [-h] [--count-tokens] [--split-tokens] [--file FILE] [--costs] [--statistics]")
+                print("batch_runner.py: error: argument --file: expected one argument (the filename). It must be placed immediately after --file.")
+                print("Example: python batch_runner.py --file my_data.csv")
+                sys.exit(2)
+        except ValueError: 
+            print("severe oof error: basically something is COOKED if this happens") # passes to let us fail naturally as god intended because it's over
+            pass
+
     args = parser.parse_args()
-    # Determine if stats should be shown (real run or when --statistics)
+
     show_stats = args.statistics or (not args.count_tokens and not args.split_tokens)
 
     llm_client = LLMClient()
@@ -378,6 +392,6 @@ if __name__ == "__main__":
             print("Halting further batch processing due to failure.")
             break
     print("Batch finished processing.")
-    # Final stats only when requested
+
     if show_stats:
         print_token_cost_stats()
