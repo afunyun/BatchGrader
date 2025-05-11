@@ -308,4 +308,6 @@ BatchGrader/
 └── ...
 </pre>
 
+![architecture](docs/architecture.png)
+
 ## Last updated: 2025-05-11 (added token counting, input splitting, previous submission logging, license.)

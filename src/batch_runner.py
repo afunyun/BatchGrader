@@ -206,11 +206,28 @@ if __name__ == "__main__":
     print(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
 
     files_found = []
+    # ---
+    # File argument resolution logic (2025-05-11, updated):
+    # - If --file is absolute, use as-is.
+    # - If --file contains a directory (e.g. input/foo.csv), resolve relative to PROJECT_ROOT.
+    # - If --file is just a filename, resolve as INPUT_DIR/filename.
+    # This prevents double 'input/input/' and allows flexible CLI usage.
+    # ---
     if args.file:
-        if not os.path.exists(os.path.join(INPUT_DIR, args.file)):
-            print(f"File {args.file} not found in {INPUT_DIR}.")
+        from pathlib import Path
+        file_arg_path = Path(args.file)
+        if file_arg_path.is_absolute():
+            resolved_path = str(file_arg_path)
+        elif file_arg_path.parent != Path('.'):
+            # Has a directory part, resolve relative to project root
+            resolved_path = str((PROJECT_ROOT / file_arg_path).resolve())
+        else:
+            # Just a filename
+            resolved_path = os.path.join(INPUT_DIR, args.file)
+        if not os.path.exists(resolved_path):
+            print(f"File {args.file} not found at {resolved_path}.")
             exit(1)
-        files_found = [args.file]
+        files_found = [resolved_path]
     else:
         files_found = [file_to_process for file_to_process in os.listdir(INPUT_DIR)
                     if file_to_process.endswith((".csv", ".json", ".jsonl"))]
