@@ -5,29 +5,25 @@ import argparse
 import sys
 import logging
 
-# --- LOG PRUNING/ARCHIVING ---
-# To prevent unbounded growth of the output/logs/ directory, prune/rotate logs before logger instantiation.
-# Moves oldest logs to output/logs/archive/ if threshold exceeded, and deletes oldest archive logs if needed.
-# See docs/scratchpad.md for rationale and changelog.
-from src.log_utils import prune_logs_if_needed
+from log_utils import prune_logs_if_needed
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'logs')
 ARCHIVE_DIR = os.path.join(LOG_DIR, 'archive')
 prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
 
-# Ensure project root is in sys.path for src.* imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from pathlib import Path
-from src.logger import logger, BatchGraderLogger
+from logger import logger, BatchGraderLogger
 from data_loader import load_data, save_data
 from evaluator import load_prompt_template
 from config_loader import load_config, CONFIG_DIR, is_examples_file_default
 from llm_client import LLMClient
 from cost_estimator import CostEstimator
-from token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary
+from token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary, log_token_usage_event
 from input_splitter import split_file_by_token_limit
 from batch_job import BatchJob
 import tempfile
+from rich_display import RichJobTable  # Live CLI job table
 
 
 def _generate_chunk_job_objects(
@@ -74,7 +70,6 @@ def _generate_chunk_job_objects(
             chunk_df = df.iloc[start_idx:end_idx].copy()
             if chunk_df.empty:
                 continue
-            # Save chunk to temp file
             with tempfile.NamedTemporaryFile(delete=False, dir=input_dir, suffix=ext, prefix=f"{base_name}_forcedchunk_{i+1}_of_{force_chunk_count}_") as tmp_f:
                 if ext.lower() == '.csv':
                     chunk_df.to_csv(tmp_f.name, index=False)
@@ -154,6 +149,12 @@ def _execute_single_batch_job_task(batch_job, llm_client, response_field_name):
 def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
     """
     Orchestrates concurrent processing of a file by splitting into chunks and running jobs in parallel.
+    Displays a live-updating table of job statuses using RichJobTable.
+    Respects max_simultaneous_batches and halt_on_chunk_failure config settings.
+    Aggregates results and returns a combined DataFrame, or None if all chunks fail.
+    """
+    """
+    Orchestrates concurrent processing of a file by splitting into chunks and running jobs in parallel.
     Respects max_simultaneous_batches and halt_on_chunk_failure config settings.
     Aggregates results and returns a combined DataFrame, or None if all chunks fail.
     """
@@ -169,53 +170,58 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
     max_workers = config.get('max_simultaneous_batches', 2)
     halt_on_failure = config.get('halt_on_chunk_failure', True)
     completed_jobs = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        llm_client = LLMClient()
-        future_to_job = {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field): job for job in jobs}
-        failure_detected = False
-        for future in as_completed(future_to_job):
-            job = future_to_job[future]
-            logger.info(f"Chunk {job.chunk_id_str} submitted")
-            try:
-                result_job = future.result()
-            except Exception as exc:
-                result_job = job
-                result_job.status = "failed"
-                result_job.error_message = str(exc)
-            logger.info(f"Chunk {job.chunk_id_str} started")
-            if result_job.status == "running":
-                logger.info(f"Chunk {job.chunk_id_str} running")
-            if result_job.status == "completed":
-                logger.success(f"Chunk {job.chunk_id_str} completed")
-            if result_job.status == "failed":
-                logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
-            completed_jobs.append(result_job)
-            if result_job.status == "failed" and halt_on_failure:
-                logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
-                failure_detected = True
-                break
-        if failure_detected:
-            for fut in future_to_job:
-                if not fut.done():
-                    fut.cancel()
-        logger.info("All chunks completed. Aggregating results...")
-        result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
-        if result_dfs:
-            combined = pd.concat(result_dfs, ignore_index=True)
-            logger.success(f"Results aggregated. {len(combined)} rows processed.")
-            # --- CHUNKED FILE CLEANUP ---
-            # After all chunk jobs for this file are complete, prune the _chunked directory.
-            from src.file_utils import prune_chunked_dir
-            chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
-            prune_chunked_dir(chunked_dir)
-            return combined
-        else:
-            logger.error(f"[FAILURE] All chunks failed for {filepath}.")
-            # Also prune chunked directory in failure case
-            from src.file_utils import prune_chunked_dir
-            chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
-            prune_chunked_dir(chunked_dir)
-            return None
+    rich_table = RichJobTable()
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            llm_client = LLMClient()
+            future_to_job = {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field): job for job in jobs}
+            failure_detected = False
+            rich_table.update_table(jobs)
+            for future in as_completed(future_to_job):
+                job = future_to_job[future]
+                logger.info(f"Chunk {job.chunk_id_str} submitted")
+                try:
+                    result_job = future.result()
+                except Exception as exc:
+                    result_job = job
+                    result_job.status = "failed"
+                    result_job.error_message = str(exc)
+                logger.info(f"Chunk {job.chunk_id_str} started")
+                if result_job.status == "running":
+                    logger.info(f"Chunk {job.chunk_id_str} running")
+                if result_job.status == "completed":
+                    logger.success(f"Chunk {job.chunk_id_str} completed")
+                if result_job.status == "failed":
+                    logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
+                completed_jobs.append(result_job)
+                rich_table.update_table(jobs)
+                if result_job.status == "failed" and halt_on_failure:
+                    logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
+                    failure_detected = True
+                    break
+            if failure_detected:
+                for fut in future_to_job:
+                    if not fut.done():
+                        fut.cancel()
+            logger.info("All chunks completed. Aggregating results...")
+            result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
+            if result_dfs:
+                combined = pd.concat(result_dfs, ignore_index=True)
+                logger.success(f"Results aggregated. {len(combined)} rows processed.")
+                from src.file_utils import prune_chunked_dir
+                chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
+                prune_chunked_dir(chunked_dir)
+                return combined
+            else:
+                logger.error(f"[FAILURE] All chunks failed for {filepath}.")
+                from src.file_utils import prune_chunked_dir
+                chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
+                prune_chunked_dir(chunked_dir)
+                return None
+    finally:
+        rich_table.finalize_table()
+        from rich_display import print_summary_table
+        print_summary_table(jobs)
 
 
 def process_file(filepath):
@@ -372,6 +378,18 @@ def process_file(filepath):
                 logger.info(f"Estimated LLM cost: ${cost:.4f} (input: {n_input_tokens} tokens, output: {n_output_tokens} tokens, model: {model_name})")
             except Exception as ce:
                 logger.error(f"Could not estimate cost: {ce}")
+            try:
+                log_token_usage_event(
+                    api_key=llm_client.api_key,
+                    model=model_name,
+                    input_tokens=n_input_tokens,
+                    output_tokens=n_output_tokens,
+                    timestamp=None,
+                    request_id=None
+                )
+                logger.info("Token usage event logged to output/token_usage_events.jsonl.")
+            except Exception as log_exc:
+                logger.error(f"[Token Logging Error] Failed to log token usage event: {log_exc}")
         except Exception as cost_exception:
             logger.error(f"[Cost Estimation Error] {cost_exception}")
 
@@ -437,17 +455,12 @@ def print_token_cost_summary(summary):
             logger.info(f"    {model:<15} | {tokens:>11,} | ${cost:>8,.4f} | {count:>5}")
 
 if __name__ == "__main__":
-    # --- LOG DIRECTORY HANDLING ---
     import argparse
     parser = argparse.ArgumentParser(description="BatchGrader Runner")
     parser.add_argument('--log_dir', type=str, default=None, help='Directory for log files (default: output/logs or as set by test runner)')
-    # Parse only known args here to check for log_dir
     args, unknown = parser.parse_known_args()
     if args.log_dir:
-        # Re-initialize logger to use test or custom log directory
         logger = BatchGraderLogger(log_dir=args.log_dir)
-    # Now re-parse with full CLI args for rest of script
-
     parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
     parser.add_argument('--count-tokens', action='store_true', help='Count tokens in input file(s) and print stats.')
     parser.add_argument('--split-tokens', action='store_true', help='Split input file(s) into parts not exceeding the configured token limit.')
@@ -617,12 +630,6 @@ if __name__ == "__main__":
             break
     logger.success("Batch finished processing.\n")
 
-    # --- CLEANUP LOGGERS ---
-    #
-    # Explicitly flush and close all logger file handlers to ensure all logs are written and
-    # no file handles are left open at shutdown. This is critical when running under a test
-    # harness or subprocess, as abrupt process termination can otherwise cause lost logs or
-    # resource contention. See docs/scratchpad.md for rationale and bug history.
     for handler in getattr(logger, 'file_logger', logging.getLogger()).handlers:
         try:
             handler.flush()

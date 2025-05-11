@@ -6,6 +6,10 @@ import uuid
 import tempfile
 from openai import OpenAI
 from config_loader import load_config
+from token_tracker import log_token_usage_event
+from logger import logger
+from datetime import datetime
+from rich.console import Console
 
 config = load_config()
 
@@ -73,26 +77,29 @@ class LLMClient:
                 os.remove(temp_file_path)
 
     def _manage_batch_job(self, input_file_id, source_filename):
-        print(f"Creating batch job for {source_filename} with file ID: {input_file_id}")
+        console = Console()
+        console.print(f"Creating batch job for {source_filename} with file ID: {input_file_id}")
         batch_job = self.client.batches.create(
             input_file_id=input_file_id,
             endpoint=self.endpoint,
             completion_window="24h",
             metadata={"source_file": source_filename}
         )
-        print(f"Batch job created with ID: {batch_job.id}. Polling for completion...")
+        last_status = None
+        terminal_statuses = ["completed", "failed", "expired", "cancelled"]
         while True:
             retrieved_batch = self.client.batches.retrieve(batch_job.id)
             status = retrieved_batch.status
-            print(f"Batch job {batch_job.id} status: {status}")
-            if status in ["completed", "failed", "expired", "cancelled"]:
-                if status == "failed":
-                    print(f"Batch job {batch_job.id} failed. Errors: {retrieved_batch.errors}")
-                elif status == "expired":
-                    print(f"Batch job {batch_job.id} expired.")
-                elif status == "cancelled":
-                    print(f"Batch job {batch_job.id} was cancelled.")
+            status_line = f"[{datetime.now():%y/%m/%d %H:%M:%S}] INFO     Batch job {batch_job.id} status: {status}"
+            if status not in terminal_statuses:
+                if status == last_status:
+                    console.print(status_line, end="\r", highlight=False, soft_wrap=True)
+                else:
+                    console.print(status_line)
+            else:
+                console.print(status_line)
                 return retrieved_batch
+            last_status = status
             time.sleep(self.poll_interval)
 
     def _process_batch_outputs(self, batch_job_obj, df_with_custom_ids):
@@ -102,7 +109,7 @@ class LLMClient:
             output_file_id = batch_job_obj.output_file_id
             error_file_id = batch_job_obj.error_file_id
             if output_file_id:
-                print(f"Retrieving output file: {output_file_id}")
+                logger.info(f"Retrieving output file: {output_file_id}")
                 try:
                     file_response = self.client.files.content(output_file_id)
                     output_data = file_response.text
@@ -110,40 +117,40 @@ class LLMClient:
                         item = json.loads(line)
                         custom_id = item.get("custom_id")
                         if not custom_id:
-                            print(f"Warning: Found item in output without custom_id: {item}")
+                            logger.warning(f"Warning: Found item in output without custom_id: {item}")
                             continue
                         if item.get("response") and item["response"].get("status_code") == 200:
                             try:
                                 content = item["response"]["body"]["choices"][0]["message"]["content"]
                                 results_map[custom_id] = content
                             except (KeyError, IndexError, TypeError) as e:
-                                print(f"Error parsing successful response for custom_id {custom_id}: {e}. Full item: {item}")
+                                logger.warning(f"Error parsing successful response for custom_id {custom_id}: {e}. Full item: {item}")
                                 results_map[custom_id] = "Error: Malformed response data"
                         elif item.get("error"):
                             err_msg = item["error"].get('message', 'Unknown error')
                             err_code = item["error"].get('code', 'N/A')
                             results_map[custom_id] = f"Error: {err_code} - {err_msg}"
-                            print(f"Request {custom_id} failed: {err_code} - {err_msg}")
+                            logger.warning(f"Request {custom_id} failed: {err_code} - {err_msg}")
                         else:
                             results_map[custom_id] = "Error: Unknown structure in output item"
-                            print(f"Warning: Unknown structure for item with custom_id {custom_id}: {item}")
+                            logger.warning(f"Warning: Unknown structure for item with custom_id {custom_id}: {item}")
                 except Exception as e:
-                    print(f"Error retrieving or parsing output file {output_file_id}: {e}")
+                    logger.warning(f"Error retrieving or parsing output file {output_file_id}: {e}")
                     for cid in df_with_custom_ids['custom_id']:
                         if cid not in results_map: results_map[cid] = "Error: Failed to retrieve/parse batch output"
             else:
-                print("Batch completed, but no output file ID was provided.")
+                logger.warning("Batch completed, but no output file ID was provided.")
                 for cid in df_with_custom_ids['custom_id']:
                     results_map[cid] = "Error: Batch completed with no output file"
             if error_file_id:
-                print(f"Retrieving error file: {error_file_id}")
+                logger.info(f"Retrieving error file: {error_file_id}")
                 try:
                     error_file_content = self.client.files.content(error_file_id).text
-                    print(f"Batch Error File Content ({error_file_id}):\n{error_file_content[:1000]}...")
+                    logger.info(f"Batch Error File Content ({error_file_id}):\n{error_file_content[:1000]}...")
                 except Exception as e:
-                    print(f"Error retrieving batch error file {error_file_id}: {e}")
+                    logger.warning(f"Error retrieving batch error file {error_file_id}: {e}")
         else:
-            print(f"Batch job did not complete successfully. Status: {batch_job_obj.status}")
+            logger.warning(f"Batch job did not complete successfully. Status: {batch_job_obj.status}")
             for cid in df_with_custom_ids['custom_id']:
                 results_map[cid] = f"Error: Batch job status - {batch_job_obj.status}"
         df_with_custom_ids[llm_output_column_name] = df_with_custom_ids['custom_id'].map(results_map).fillna("Error: No result found for custom_id")
@@ -162,7 +169,7 @@ class LLMClient:
             df, system_prompt_content, response_field_name
         )
         if not batch_requests_data:
-            print("No requests generated. Skipping.")
+            logger.warning("No requests generated. Skipping.")
             return df
         input_file_id = self._upload_batch_input_file(batch_requests_data, base_filename_for_tagging)
         final_batch_obj = self._manage_batch_job(input_file_id, base_filename_for_tagging)
