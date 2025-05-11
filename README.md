@@ -40,8 +40,8 @@ All configuration is managed via simple YAML.
    - Clone the repo:
 
      ```powershell
-     git clone <repo-url>
-     cd <repo-dir>
+     git clone https://github.com/afunyun/BatchGrader.git
+     cd BatchGrader
      ```
 
    - (Optional but encouraged) Create and activate a virtual environment. I recommend astral-uv:
@@ -63,13 +63,6 @@ All configuration is managed via simple YAML.
      uv pip install -r requirements.txt
      ```
 
-     **Adding/updating dependencies:**
-
-     ```powershell
-     uv pip install <package>
-     uv pip freeze > requirements.txt
-     ```
-
 3. **Configuration:**
    - Edit config/config.yaml (API key, paths) and config/prompts.yaml (evaluation prompts).
 
@@ -80,20 +73,21 @@ All configuration is managed via simple YAML.
 All runtime configuration is in `config/config.yaml`
 
 Defaults:
-<details>
-<pre>
-input_dir: input            # Directory for input files
-output_dir: output          # Directory for output files
+
+```yaml
+input_dir: input
+output_dir: output
 examples_dir: examples/examples.txt
-openai_model_name: gpt-4o-mini-2024-07-18  # OpenAI model to use
-openai_api_key: YOUR_OPENAI_API_KEY_HERE   # Your OpenAI API key
-poll_interval_seconds: 60      # Polling interval for batch job status (seconds)
-max_tokens_per_response: 1000  # Max tokens per LLM response. Not really super applicable unless you're expecting a response that isn't a single number.
-response_field: response       # Field/column in input data to evaluate
-batch_api_endpoint: /v1/chat/completions   # OpenAI batch API endpoint... not usually something to change
-token_limit: 2_000_000
-</pre>
-</details>
+openai_model_name: gpt-4o-mini-2024-07-18
+# API key is pulled from environment variable OPENAI_API_KEY if set
+# otherwise uncomment and set below:
+# openai_api_key: YOUR_OPENAI_API_KEY_HERE
+poll_interval_seconds: 60
+max_tokens_per_response: 1000
+response_field: response
+batch_api_endpoint: /v1/chat/completions
+token_limit: 2000000
+```
 
 ## Prompt Configuration
 

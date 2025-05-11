@@ -5,101 +5,93 @@
 This diagram provides an overview of the main components and their primary interactions, aligning component names with your Python files and detailing data sources.
 
 ```graphviz
-digraph ExecutionFlow {
-    // Dark background settings
+digraph UpdatedExecutionFlow {
+    rankdir=TB;
     bgcolor="#1E1E1E";
-    node [style="filled,rounded", fontcolor="white", color="#555555"];
+    node [shape=box, style="rounded,filled", fontcolor="white", color="#555555"];
     edge [color="#AAAAAA", fontcolor="#CCCCCC"];
 
-    // User initiates the process
-    User [label="User (External Actor)", shape=ellipse, fillcolor="#4A235A"]; 
-    Main [label="batch_runner.py\n(Main Process)", fillcolor="#1A5276"];
-    
-    // Core components
-    ConfigLoader [label="config_loader.py", fillcolor="#117A65"];
-    DataLoader [label="data_loader.py", fillcolor="#117A65"];
-    Evaluator [label="evaluator.py\n(Prompt Handling)", fillcolor="#117A65"];
-    LLMClient [label="llm_client.py\n(OpenAI Interaction)", fillcolor="#117A65"];
-    CostEstimator [label="cost_estimator.py", fillcolor="#117A65"];
-    
-    // File resources
-    ReadsConfig [label="config/config.yaml", shape=note, fillcolor="#7D6608"];
-    ReadsPromptsYAML [label="config/prompts.yaml", shape=note, fillcolor="#7D6608"];
-    ReadsExamples [label="examples/examples.txt", shape=note, fillcolor="#7D6608"];
-    ReadsPricing [label="docs/pricing.csv", shape=note, fillcolor="#7D6608"];
-    ReadsInput [label="Input Data\n(input/)", shape=folder, fillcolor="#7D6608"];
-    WritesOutput [label="Output Data\n(output/)", shape=folder, fillcolor="#7D6608"];
-    
-    // External systems
-    OpenAI [label="OpenAI Batch API\n(External Service)", shape=ellipse, fillcolor="#4A235A"];
-    FileSystem [label="File System", shape=ellipse, fillcolor="#4A235A"];
-    
-    // Core group
-    subgraph cluster_BatchGraderSystem {
-        label="BatchGrader System";
-        fontcolor="#CCCCCC";
-        color="#555555";
-        
-        // Core logic group
-        subgraph cluster_CoreLogic {
-            label="Core Processing Logic";
-            fontcolor="#CCCCCC";
-            color="#555555";
-            ConfigLoader; DataLoader; Evaluator; LLMClient; CostEstimator;
-        }
-        
-        // Configuration & data sources
-        subgraph cluster_ConfigDataSources {
-            label="Configuration & Data Management";
-            fontcolor="#CCCCCC";
-            color="#555555";
-            ReadsConfig; ReadsPromptsYAML; ReadsExamples; ReadsPricing; ReadsInput; WritesOutput;
+    User [label="User (CLI)", shape=ellipse, fillcolor="#4A235A"];
+    Main [label="batch_runner.py\nmain() / argparse", fillcolor="#1A5276"];
+
+    subgraph cluster_Config {
+        label="Configuration Loading"; fillcolor="#2C3E50"; fontcolor="#ECF0F1";
+        ConfigLoader [label="config_loader.py\nload_config(), ensure_config_files(), is_examples_file_default()", fillcolor="#117A65"];
+        FS_Config [label="config.yaml", shape=note, fillcolor="#7D6608"];
+        FS_Prompts [label="prompts.yaml", shape=note, fillcolor="#7D6608"];
+        FS_Examples_Cfg [label="examples.txt\n(existence/default check)", shape=note, fillcolor="#7D6608"];
+    }
+
+    subgraph cluster_CoreProcessing {
+        label="Core File Processing Loop (per file)"; fillcolor="#2C3E50"; fontcolor="#ECF0F1";
+        ProcessFile [label="batch_runner.py\nprocess_file(filepath)\nOR token counting/splitting logic", fillcolor="#1A5276"];
+        DataLoader [label="data_loader.py\nload_data(), save_data()", fillcolor="#117A65"];
+        Evaluator [label="evaluator.py\nload_prompt_template()", fillcolor="#117A65"];
+        FS_Input [label="input/[file]", shape=note, fillcolor="#7D6608"];
+        FS_Examples_Content [label="examples.txt\n(content reading)", shape=note, fillcolor="#7D6608"];
+        FS_Output [label="output/[file]", shape=note, fillcolor="#7D6608"];
+        TokenCounterFunc [label="batch_runner.py\n(tiktoken based token counting function)", fillcolor="#B3B6B7", fontcolor="black"];
+    }
+
+    subgraph cluster_LLM {
+        label="LLM Interaction (if not just counting/splitting)"; fillcolor="#2C3E50"; fontcolor="#ECF0F1";
+        LLMClient [label="llm_client.py\nLLMClient.run_batch_job()", fillcolor="#117A65"];
+        OpenAI_API [label="OpenAI Batch API", shape=ellipse, fillcolor="#4A235A"];
+        subgraph cluster_LLM_Internal {
+            label="LLMClient Internal Steps"; fillcolor="#5D6D7E"; fontcolor="#ECF0F1";
+            Prepare [label="_prepare_batch_requests()"]; Upload [label="_upload_batch_input_file()"];
+            Manage [label="_manage_batch_job()"]; ProcessOutputs [label="_process_batch_outputs()"];
         }
     }
-    
-    // External systems group
-    subgraph cluster_ExternalSystems {
-        label="External Systems & Storage";
-        fontcolor="#CCCCCC";
-        color="#555555";
-        OpenAI; FileSystem;
+
+    subgraph cluster_Utilities {
+        label="Utilities"; fillcolor="#2C3E50"; fontcolor="#ECF0F1";
+        CostEstimator [label="cost_estimator.py\nestimate_cost()", fillcolor="#117A65"];
+        TokenTracker [label="token_tracker.py\nupdate_token_log(), get_token_usage_for_day()", fillcolor="#117A65"];
+        InputSplitter [label="input_splitter.py\nsplit_file_by_token_limit()", fillcolor="#117A65"];
+        FS_Pricing [label="docs/pricing.csv", shape=note, fillcolor="#7D6608"];
+        FS_TokenLog [label="output/token_usage_log.json", shape=note, fillcolor="#7D6608"];
+        FS_SplitOutput [label="input/[file_partN]", shape=note, fillcolor="#7D6608"];
     }
-    
-    // Direct Connections
+
+    // Connections
     User -> Main;
-    Main -> ConfigLoader;
-    Main -> DataLoader;
-    Main -> Evaluator;
-    Main -> LLMClient;
-    Main -> CostEstimator;
-    
-    ConfigLoader -> ReadsConfig;
-    ConfigLoader -> ReadsPromptsYAML;
-    Evaluator -> ReadsPromptsYAML;
-    Main -> ReadsExamples;
-    CostEstimator -> ReadsPricing;
-    DataLoader -> ReadsInput;
-    DataLoader -> WritesOutput;
-    
-    LLMClient -> OpenAI;
-    
-    // File system connections (using dashed lines)
-    FileSystem -> ReadsConfig [style=dashed];
-    FileSystem -> ReadsPromptsYAML [style=dashed];
-    FileSystem -> ReadsExamples [style=dashed];
-    FileSystem -> ReadsPricing [style=dashed];
-    FileSystem -> ReadsInput [style=dashed];
-    FileSystem -> WritesOutput [style=dashed];
-    
-    // Dotted connections for high-level interactions
-    User -> Main [style=dotted, label="Triggers execution"];
-    Main -> cluster_CoreLogic [style=dotted, label="Orchestrates"];
-    cluster_CoreLogic -> cluster_ConfigDataSources [style=dotted, label="Interacts with"];
-    LLMClient -> OpenAI [style=dotted, label="Communicates with"];
-    DataLoader -> FileSystem [style=dotted, label="Reads/Writes to/from"];
-    ConfigLoader -> FileSystem [style=dotted, label="Reads from"];
-    Evaluator -> FileSystem [style=dotted, label="Reads from"];
-    CostEstimator -> FileSystem [style=dotted, label="Reads from"];
+    Main -> ConfigLoader [label="Load initial config"];
+    ConfigLoader -> FS_Config; ConfigLoader -> FS_Prompts; ConfigLoader -> FS_Examples_Cfg;
+
+    Main -> TokenTracker [label="Display daily usage"];
+    TokenTracker -> FS_TokenLog;
+
+    Main -> ProcessFile [label="For each file or specified file"];
+    ProcessFile -> DataLoader [label="Load input data"];
+    DataLoader -> FS_Input;
+
+    ProcessFile -> ConfigLoader [label="Check examples default status"];
+    ProcessFile -> Evaluator [label="Load prompt template"];
+    Evaluator -> FS_Prompts;
+    ProcessFile -> FS_Examples_Content [label="Read examples content"];
+    ProcessFile -> TokenCounterFunc [label="Define/Use token counter"];
+
+    alt "CLI: --count-tokens"
+        ProcessFile -> TokenCounterFunc [label="Apply to rows, print stats"];
+    else "CLI: --split-tokens"
+        ProcessFile -> InputSplitter [label="If tokens > limit"];
+        InputSplitter -> TokenCounterFunc [label="Uses"];
+        InputSplitter -> FS_Input [label="Reads original"];
+        InputSplitter -> FS_SplitOutput [label="Writes parts"];
+    else "CLI: Default Run (Batch Job)"
+        ProcessFile -> LLMClient;
+        LLMClient -> Prepare -> Upload -> Manage -> ProcessOutputs;
+        Upload -> OpenAI_API [label="Upload .jsonl"];
+        Manage -> OpenAI_API [label="Create/Poll Batch"];
+        ProcessOutputs -> OpenAI_API [label="Retrieve Results/Errors"];
+        ProcessOutputs -> DataLoader [label="Merge results to DataFrame"];
+        ProcessFile -> TokenTracker [label="Update submitted tokens"];
+        ProcessFile -> CostEstimator [label="Estimate cost"];
+        CostEstimator -> FS_Pricing;
+        ProcessFile -> DataLoader [label="Save final output"];
+        DataLoader -> FS_Output;
+    end
 }
 ```
 
@@ -108,83 +100,86 @@ digraph ExecutionFlow {
 This diagram focuses on the direct interactions between the core Python modules and the configuration/data files they access.
 
 ```graphviz
-digraph ModuleInteractions {
-    // Dark background settings
+digraph UpdatedModuleInteractions {
     bgcolor="#1E1E1E";
-    node [style="filled,rounded", fontcolor="white", color="#555555"];
+    node [style="filled,rounded", fontcolor="white", color="#555555", shape=box];
     edge [color="#AAAAAA", fontcolor="#CCCCCC"];
 
-    // External actor
-    User [label="User (External Actor)", shape=ellipse, fillcolor="#4A235A"];
-    
-    // Core components
-    BR [label="batch_runner.py", fillcolor="#117A65"];
+    // External Actor
+    User [label="User / CLI", shape=ellipse, fillcolor="#4A235A"];
+
+    // Core Python Modules (src/)
+    BR [label="batch_runner.py", fillcolor="#1A5276"];
     CL [label="config_loader.py", fillcolor="#117A65"];
     DL [label="data_loader.py", fillcolor="#117A65"];
-    E [label="evaluator.py", fillcolor="#117A65"];
+    E [label="evaluator.py\n(Prompt Loader)", fillcolor="#117A65"];
     LC [label="llm_client.py", fillcolor="#117A65"];
     CE [label="cost_estimator.py", fillcolor="#117A65"];
-    
-    // File resources
-    CfgYAML [label="config/config.yaml", shape=note, fillcolor="#7D6608"];
-    PrmYAML [label="config/prompts.yaml", shape=note, fillcolor="#7D6608"];
-    ExTXT [label="examples/examples.txt", shape=note, fillcolor="#7D6608"];
-    PrcCSV [label="docs/pricing.csv", shape=note, fillcolor="#7D6608"];
-    InputDir [label="input/ (User Data)", shape=folder, fillcolor="#7D6608"];
-    OutputDir [label="output/ (Results)", shape=folder, fillcolor="#7D6608"];
-    
-    // External systems
+    TT [label="token_tracker.py", fillcolor="#117A65"];
+    IS [label="input_splitter.py", fillcolor="#117A65"];
+
+    // Configuration & Data Files
+    ConfigYAML [label="config/config.yaml", shape=note, fillcolor="#7D6608"];
+    PromptsYAML [label="config/prompts.yaml", shape=note, fillcolor="#7D6608"];
+    ExamplesTXT [label="examples/examples.txt", shape=note, fillcolor="#7D6608"];
+    PricingCSV [label="docs/pricing.csv", shape=note, fillcolor="#7D6608"];
+    InputDir [label="input/\n(User Data, Split Outputs)", shape=folder, fillcolor="#7D6608"];
+    OutputDir [label="output/\n(Results, Error Logs)", shape=folder, fillcolor="#7D6608"];
+    TokenLogJSON [label="output/token_usage_log.json", shape=note, fillcolor="#7D6608"];
+
+    // External Services
     OpenAI_API [label="OpenAI Batch API", shape=ellipse, fillcolor="#4A235A"];
-    FileSystem [label="File System", shape=ellipse, fillcolor="#4A235A"];
-    
-    // Core system group
+
+    // Grouping
     subgraph cluster_BatchGraderSystem {
         label="BatchGrader System";
-        fontcolor="#CCCCCC";
-        color="#555555";
-        
-        // Core components
-        BR; CL; DL; E; LC; CE;
-        
-        // Configuration & files
-        CfgYAML; PrmYAML; ExTXT; PrcCSV; InputDir; OutputDir;
+        fontcolor="#CCCCCC"; color="#555555";
+        BR; CL; DL; E; LC; CE; TT; IS;
     }
-    
-    // External services group
-    subgraph cluster_ExternalServices {
-        label="External Services & System Interfaces";
-        fontcolor="#CCCCCC";
-        color="#555555";
-        OpenAI_API; FileSystem;
+    subgraph cluster_FileSystemData {
+        label="File System (Data & Config)";
+        fontcolor="#CCCCCC"; color="#555555";
+        ConfigYAML; PromptsYAML; ExamplesTXT; PricingCSV; InputDir; OutputDir; TokenLogJSON;
     }
-    
-    // Connections with labeled edges
-    User -> BR [label="Initiates Process"];
-    
-    BR -> CL [label="Loads Config"];
-    BR -> DL [label="Loads/Saves Data"];
-    BR -> E [label="Handles Prompts"];
-    BR -> LC [label="Interacts with LLM"];
-    BR -> CE [label="Estimates Cost"];
-    
-    CL -> CfgYAML [label="Reads"];
-    CL -> PrmYAML [label="Reads"];
-    E -> PrmYAML [label="Reads Prompt Templates"];
-    BR -> ExTXT [label="Reads Examples Content"];
-    CL -> ExTXT [label="Checks if Default"];
-    CE -> PrcCSV [label="Reads Pricing Data"];
-    DL -> InputDir [label="Reads from"];
-    DL -> OutputDir [label="Writes to"];
-    
-    LC -> OpenAI_API [label="Sends Batch Job, Polls,\nRetrieves Results"];
-    
-    // File System connections (using dashed lines)
-    FileSystem -> CfgYAML [style=dashed];
-    FileSystem -> PrmYAML [style=dashed];
-    FileSystem -> ExTXT [style=dashed];
-    FileSystem -> PrcCSV [style=dashed];
-    FileSystem -> InputDir [style=dashed];
-    FileSystem -> OutputDir [style=dashed];
+
+    // Relationships
+    User -> BR [label="Initiates via CLI options\n(--count-tokens, --split-tokens, --file, or default run)"];
+
+    BR -> CL [label="Uses"];
+    BR -> DL [label="Uses for I/O"];
+    BR -> E [label="Uses (load prompt)"];
+    BR -> LC [label="Uses (for batch jobs)"];
+    BR -> CE [label="Uses (for cost estimate)"];
+    BR -> TT [label="Uses (log usage)"];
+    BR -> IS [label="Uses (if --split-tokens)"];
+
+    CL -> ConfigYAML [label="Reads/Writes Default"];
+    CL -> PromptsYAML [label="Reads/Writes Default"];
+    CL -> ExamplesTXT [label="Checks if Default,\nEnsures Exists"];
+
+    E -> PromptsYAML [label="Reads Templates"];
+    E -> CL [label="Fallback to Default Prompts"];
+
+    DL -> InputDir [label="Reads From"];
+    DL -> OutputDir [label="Writes To (Results, Error Logs)"];
+
+    LC -> OpenAI_API [label="Interacts (Upload, Create, Poll, Retrieve)"];
+    LC -> DL [label="Uses (to write temp .jsonl for upload - via tempfile)"]; // Indirectly via tempfile
+
+    CE -> PricingCSV [label="Reads"];
+    TT -> TokenLogJSON [label="Reads/Writes"];
+    IS -> DL [label="Uses (to read input for splitting)"]; // To read the file to be split
+    IS -> InputDir [label="Writes Split Parts To"]; // Writes output parts
+
+
+    // Data flow for specific operations
+    BR -> ExamplesTXT [label="Reads Content"];
+    BR -> DL [label="load_data()"];
+    BR -> DL [label="save_data()"];
+    BR -> IS [label="split_file_by_token_limit()"];
+    BR -> TT [label="update_token_log() / get_token_usage_for_day()"];
+    BR -> CE [label="estimate_cost()"];
+    BR -> LC [label="run_batch_job()"];
 }
 ```
 

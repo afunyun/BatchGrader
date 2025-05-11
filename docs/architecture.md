@@ -31,70 +31,79 @@ graph TD
 
 ```mermaid
 graph TD
-    %% Main components
-    BatchRunner["Batch Runner(batch_runner.py)"]
-    LLMClient["LLM Client(llm_client.py)"]
-    ConfigLoader["Config Loader(config_loader.py)"]
-    DataIO["Data I/O Handler(data_loader.py)"]
-    Evaluator["Evaluator(evaluator.py)"]
-    CostEstimator["Cost Estimator(cost_estimator.py)"]
-    
-    %% External components
-    User["UserExternal Actor"]
-    FileSystem["File SystemCSV, JSON, JSONL files"]
-    OpenAI["OpenAI Batch APIExternal Service"]
-    
-    %% Configuration files
-    ConfigYAML["config.yamlRuntime settings"]
-    PromptsYAML["prompts.yamlPrompt templates"]
-    Examples["examples.txtExample texts"]
-    Pricing["pricing.csvModel pricing data"]
-    
-    %% Relationships - User interactions
-    User -->|Initiates batch job| BatchRunner
-    
-    %% Relationships - BatchRunner with other components
-    BatchRunner -->|Uses| LLMClient
-    BatchRunner -->|Uses| ConfigLoader
-    BatchRunner -->|Uses| DataIO
-    BatchRunner -->|Uses| Evaluator
-    BatchRunner -->|Uses| CostEstimator
-    
-    %% Relationships - Config management
-    ConfigLoader -->|Loads| ConfigYAML
-    ConfigLoader -->|Loads| PromptsYAML
-    Evaluator -->|Reads templates from| PromptsYAML
-    BatchRunner -->|Reads examples from| Examples
-    CostEstimator -->|Reads pricing from| Pricing
-    
-    %% Relationships - External systems
-    LLMClient -->|Sends batch requests to| OpenAI
-    OpenAI -->|Returns results to| LLMClient
-    DataIO -->|Reads input from| FileSystem
-    DataIO -->|Writes output to| FileSystem
-    
-    %% Visual grouping
-    subgraph BatchGraderCore["BatchGrader Core System"]
-        BatchRunner
-        LLMClient
-        ConfigLoader
-        DataIO
-        Evaluator
-        CostEstimator
+    %% Main System Group
+    subgraph BatchGraderSystem["BatchGrader System"]
+        direction LR
+        %% Core Modules
+        subgraph CoreModules["Core Modules (src/)"]
+            BR["batch_runner.py"]
+            CL["config_loader.py"]
+            DL["data_loader.py"]
+            E["evaluator.py (Prompt Loader)"]
+            LC["llm_client.py"]
+            CE["cost_estimator.py"]
+            TT["token_tracker.py"]
+            IS["input_splitter.py"]
+        end
+
+        %% Data & Config Files
+        subgraph FileSystemData["File System (Data & Config)"]
+            ConfigYAML["config/config.yaml"]
+            PromptsYAML["config/prompts.yaml"]
+            ExamplesTXT["examples/examples.txt"]
+            PricingCSV["docs/pricing.csv"]
+            InputDir["input/ (User Data, Split Outputs)"]
+            OutputDir["output/ (Results, Error Logs)"]
+            TokenLogJSON["output/token_usage_log.json"]
+        end
     end
-    
-    subgraph ExternalComponents["External Components"]
-        User
-        FileSystem
-        OpenAI
-    end
-    
-    subgraph ConfigurationFiles["Configuration Files"]
-        ConfigYAML
-        PromptsYAML
-        Examples
-        Pricing
-    end
+
+    %% External Elements
+    User["User / CLI"]
+    OpenAI_API["OpenAI Batch API"]
+
+    %% Relationships
+    User -- "Initiates via CLI" --> BR
+
+    BR --> CL
+    BR -- "File I/O" --> DL
+    BR -- "Load Prompt" --> E
+    BR -- "Batch Jobs" --> LC
+    BR -- "Cost Estimate" --> CE
+    BR -- "Log Token Usage" --> TT
+    BR -- "Split Input" --> IS
+
+    CL -- "Reads/Writes Default" --> ConfigYAML
+    CL -- "Reads/Writes Default" --> PromptsYAML
+    CL -- "Checks Default/Ensures Exists" --> ExamplesTXT
+
+    E -- "Reads Templates" --> PromptsYAML
+    E -- "Fallback Defaults" --> CL
+
+    DL -- "Reads From" --> InputDir
+    DL -- "Writes To (Results, Logs)" --> OutputDir
+
+    LC -- "API Interaction" --> OpenAI_API
+    %% LC uses tempfile, which interacts with FS, but not directly with DL for this
+    %% For simplicity, direct DL link for temp file omitted, but LC does write a temp file.
+
+    CE -- "Reads" --> PricingCSV
+    TT -- "Reads/Writes" --> TokenLogJSON
+    IS -- "Reads Original for Splitting" --> DL
+    IS -- "Writes Split Parts To" --> InputDir
+
+
+    BR -- "Reads Content" --> ExamplesTXT
+    IS -- "Uses Data Loader to Read" --> DL
+
+    %% Styling (optional, for clarity if rendered)
+    style BR fill:#1A5276,color:#fff
+    style User fill:#4A235A,color:#fff
+    style OpenAI_API fill:#4A235A,color:#fff
+    classDef module fill:#117A65,color:#fff
+    classDef file fill:#7D6608,color:#fff
+    class CL,DL,E,LC,CE,TT,IS module
+    class ConfigYAML,PromptsYAML,ExamplesTXT,PricingCSV,InputDir,OutputDir,TokenLogJSON file
 ```
 
 ---
@@ -102,81 +111,102 @@ graph TD
 **<div align="center">Architecture Diagram (Combined Structure & Execution)</div>**
 
 ```mermaid
-%% BatchGrader System Architecture & Execution Flow (Function-Level, Updated)
 flowchart TD
-  %% External Systems
-  subgraph External_Systems["External Systems"]
-    OpenAI_API["OpenAI API<br>External LLM Service"]
-  end
+    User["User (CLI)"] ==> Main["batch_runner.py - main() / argparse"]
 
-  %% File System
-  subgraph File_System["File System Storage"]
-    FS_Config["config.yaml"]
-    FS_Prompts["prompts.yaml"]
-    FS_Input["Input Data Files (.csv, .json, .jsonl)"]
-    FS_Output["Output Result Files (incl. ERROR_*)"]
-    FS_Examples["User Example Data<br>(e.g., from 'examples_dir')"]
-    FS_Pricing["docs/pricing.csv"]
-  end
+    subgraph ConfigHandling["Configuration Loading"]
+        direction LR
+        ConfigLoader["config_loader.py"]
+        FS_Config["config.yaml"]
+        FS_Prompts["prompts.yaml"]
+        FS_Examples_Cfg["examples.txt (check)"]
+        ConfigLoader --> FS_Config
+        ConfigLoader --> FS_Prompts
+        ConfigLoader --> FS_Examples_Cfg
+    end
 
-  %% Application Components
-  subgraph BatchGraderApp["Batch Grader Application"]
-    Comp_BatchRunner["Main Runner<br>(batch_runner.py)"]
-    Comp_ConfigLoader["Configuration Loader<br>(config_loader.py)"]
-    Comp_DataLoader["Data Loader<br>(data_loader.py)"]
-    Comp_Evaluator["Prompt Evaluator<br>(evaluator.py)"]
-    Comp_LLMClient["LLM Client<br>(llm_client.py)"]
-    Comp_CostEstimator["Cost Estimator<br>(cost_estimator.py)"]
-  end
+    Main -- "Load Config" --> ConfigLoader
+    Main -- "Display Daily Usage" --> TokenTrackerUtil
+    TokenTrackerUtil["token_tracker.py"] --> TokenLogFile["output/token_usage_log.json"]
 
-  %% LLM Operations (detailed)
-  subgraph LLM_Ops["LLM Batch Job (LLMClient.run_batch_job)"]
-    D1["_prepare_batch_requests(df, prompt, response_field)"]
-    D2["_upload_batch_input_file(requests, filename)"]
-    D3["_manage_batch_job(input_file_id, filename)"]
-    D4["_collect_batch_outputs(batch_job, df)"]
-  end
+    Main -- "For each/specified input file" --> FileLoop
+    subgraph FileLoop["File Processing Loop (batch_runner.py)"]
+        direction TB
+        StartFile["Start File Process"]
+        LoadData["data_loader.py - load_data()"]
+        InputFile["input/[file]"]
+        
+        DeterminePrompt["Determine System Prompt"]
+        Eval["evaluator.py - load_prompt_template()"]
+        PromptsFile["config/prompts.yaml"]
+        ExamplesContent["examples.txt (read content)"]
+        
+        TokenCounter["Define tiktoken counter"]
 
-  %% Main Execution Flow
-  Comp_BatchRunner -- "load_config()" --> Comp_ConfigLoader
-  Comp_ConfigLoader <-- "reads" --> FS_Config
-  Comp_BatchRunner -- "load_data()" --> Comp_DataLoader
-  Comp_DataLoader -- "reads" --> FS_Input
-  Comp_BatchRunner -- "prepare prompt" --> Comp_Evaluator
-  Comp_Evaluator -- "reads" --> FS_Prompts
-  Comp_BatchRunner -- "reads content from" --> FS_Examples
-  Comp_BatchRunner -- "instantiate & use" --> Comp_LLMClient
-  Comp_BatchRunner -- "estimate costs" --> Comp_CostEstimator
-  Comp_CostEstimator -- "reads" --> FS_Pricing
-  Comp_LLMClient -- "run_batch_job()" --> D1
-  D1 --> D2
-  D2 -- "upload file" --> OpenAI_API
-  D2 --> D3
-  D3 -- "manage job, poll" --> OpenAI_API
-  D3 --> D4
-  D4 -- "get results" --> OpenAI_API
-  D4 -- "returns results" --> Comp_LLMClient
-  Comp_LLMClient -- "returns outputss" --> Comp_BatchRunner
-  Comp_BatchRunner -- "save_data()" --> Comp_DataLoader
-  Comp_DataLoader -- "writes" --> FS_Output
-  Comp_BatchRunner -- "on error, save error file" --> FS_Output
+        StartFile --> LoadData --> InputFile
+        StartFile --> DeterminePrompt
+        DeterminePrompt --> ConfigLoaderSeq["config_loader.py - is_examples_file_default()"]
+        DeterminePrompt --> Eval --> PromptsFile
+        DeterminePrompt --> ExamplesContent
+        StartFile --> TokenCounter
 
-  %% Config Files: Read-Only Relationship
-  FS_Config <-- "read (not written except at project init)" --> Comp_BatchRunner
-  FS_Prompts <-- "read (not written except at project init)" --> Comp_Evaluator
-  FS_Examples <-- "read (not written except at project init; applies to all files in examples/)" --> Comp_BatchRunner
-  FS_Input <-- "read (input directory may be created if missing, but files are only read)" --> Comp_BatchRunner
+        subgraph CLI_Actions["CLI Action Handling"]
+            direction LR
+            IfCount["--count-tokens?"]
+            IfSplit["--split-tokens?"]
+            DefaultRun["Default Batch Run"]
 
-  %% Control & Data Flow
-  Comp_BatchRunner -- "main: iterates input files, calls process_file()" --> Comp_BatchRunner
-  Comp_BatchRunner -- "uses config values" --> Comp_ConfigLoader
-  Comp_BatchRunner -- "loads examples" --> Comp_Evaluator
+            IfCount -- "Yes" --> CountTokens["Count & Print Stats"]
+            IfSplit -- "Yes" --> SplitLogic["Split Logic"]
+            IfCount -- "No" --> IfSplit
+            IfSplit -- "No" --> DefaultRun
+        end
+        StartFile --> CLI_Actions
+        
+        subgraph SplittingProcess["Input Splitting (if active)"]
+            InputSplitter["input_splitter.py"]
+            SplitInputFile["input/[file_original]"]
+            SplitOutputFile["input/[file_partN]"]
+            SplitLogic --> InputSplitter
+            InputSplitter -- "Uses counter" --> TokenCounter
+            InputSplitter -- "Reads" --> SplitInputFile
+            InputSplitter -- "Writes" --> SplitOutputFile
+        end
 
-  %% Styling
-  style External_Systems fill:#161b22,stroke:#795548,stroke-width:1.5px
-  style File_System fill:#161b22,stroke:#2e7d32,stroke-width:1.5px
-  style BatchGraderApp fill:#161b22,stroke:#1e88e5,stroke-width:1.5px
-  style LLM_Ops stroke-width:1px
+        subgraph BatchJobProcess["Batch Job Processing (Default Run)"]
+            direction TB
+            LLM_Client["llm_client.py - run_batch_job()"]
+            OpenAI_Service["OpenAI Batch API"]
+            
+            LLM_Client -- "Prepare, Upload, Manage, Process" --> OpenAI_Service
+            
+            LogTokenUsage["token_tracker.py - update_token_log()"]
+            EstimateCost["cost_estimator.py - estimate_cost()"]
+            PricingFile["docs/pricing.csv"]
+            SaveOutput["data_loader.py - save_data()"]
+            OutputFile["output/[file_results]"]
+
+            DefaultRun --> LLM_Client
+            DefaultRun --> LogTokenUsage
+            DefaultRun --> EstimateCost --> PricingFile
+            DefaultRun --> SaveOutput --> OutputFile
+        end
+    end
+
+    %% Styling
+    classDef main fill:#1A5276,color:#fff
+    classDef module fill:#117A65,color:#fff
+    classDef util fill:#B3B6B7,color:#000
+    classDef file fill:#7D6608,color:#fff
+    classDef ext fill:#4A235A,color:#fff
+    classDef subgraph_bg fill:#2C3E50,stroke:#aaa,color:#fff
+    
+    class Main,ProcessFile,StartFile main
+    class User,OpenAI_Service,OpenAI_API ext
+    class ConfigLoader,DataLoader,Eval,LLMClient,LLM_Client,CostEstimator,TokenTracker,TokenTrackerUtil,InputSplitter,InputSplitterPy,ConfigLoaderSeq module
+    class TokenCounterFunc,TokenCounter util
+    class FS_Config,FS_Prompts,FS_Examples_Cfg,FS_Examples_Content,FS_Input,InputFile,FS_Output,OutputFile,FS_Pricing,PricingFile,FS_TokenLog,TokenLogFile,FS_SplitOutput,SplitInputFile,SplitOutputFile file
+    class ConfigHandling,CoreProcessing,LLM,Utilities,FileLoop,CLI_Actions,SplittingProcess,BatchJobProcess subgraph_bg
 ```
 
 ---
