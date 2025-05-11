@@ -159,12 +159,14 @@ Edit this prompt to match your evaluation criteria. The prompt should instruct t
     Batch API rate limits are separate from existing per-model rate limits. The Batch API has two new types of rate limits:
 
     1.  **Per-batch limits:** A single batch may include up to 50,000 requests, and a batch input file can be up to 200 MB in size. Note that `/v1/embeddings` batches are also restricted to a maximum of 50,000 embedding inputs across all requests in the batch.
-    2.  **Enqueued prompt tokens per model:** Each model has a maximum number of enqueued prompt tokens allowed for batch processing. You can find these limits on the [Platform Settings page](/settings/organization/limits).
+    2.  **Enqueued prompt tokens per model:** Each model has a maximum number of enqueued prompt tokens allowed for batch processing.
 
     There are no limits for output tokens or number of submitted requests for the Batch API today. Because Batch API rate limits are a new, separate pool, using the Batch API will not consume tokens from your standard per-model rate limits, thereby offering you a convenient way to increase the number of requests and processed tokens you can use when querying our API.
 ```
 
 **OpenAI themselves limit the amount of requests per batch. See above if you're wondering why there's a 50k/request cap.**
+**This does not currently take into account your Tokens-Per-Day limit, as that's entirely dependent on your organization's limit. You can find that information here: <https://platform.openai.com/settings/organization/limits>**
+**Tier 1 is 2,000,000 TPD.**
 
 ## Input/Output Formats
 
