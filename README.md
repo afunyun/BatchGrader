@@ -400,9 +400,15 @@ BatchGrader/
 ├── examples/
 │   └── examples.txt
 ├── input/
+│   ├── _chunked/          # Auto-generated chunked input files (.keep for dir presence)
 │   └── ... (your input files)
 ├── output/
+│   ├── logs/              # Persistent logs (.keep present)
 │   └── ... (results, token_usage_log.json)
+├── tests/
+│   ├── input/
+│   ├── output/
+│   └── logs/              # Test run logs (.keep present)
 ├── src/
 │   ├── batch_runner.py         # Main entry point & CLI
 │   ├── config_loader.py        # Loads config & defaults
@@ -411,6 +417,10 @@ BatchGrader/
 │   ├── evaluator.py            # Prompt template mgmt
 │   ├── input_splitter.py       # Utility for input splitting by token limit
 │   ├── llm_client.py           # OpenAI Batch API client
+│   ├── logger.py               # Modular logging utility
+│   ├── log_utils.py            # Log pruning/archiving
+│   ├── file_utils.py           # File/directory helpers (e.g., prune_chunked_dir)
+│   ├── rich_display.py         # Rich CLI live tables
 │   ├── token_tracker.py        # Tracks API token usage
 │   └── __pycache__/
 ├── requirements.txt
@@ -418,5 +428,9 @@ BatchGrader/
 ├── README.md
 └── ...
 ```
+
+- All chunked input files are auto-stored in `input/_chunked/`.
+- All logs go to `output/logs/` (production) or `tests/logs/` (tests), with `.keep` files to ensure directory presence.
+- Directory names are singular and standardized.
 
 ![architecture](docs/architecture.png)
