@@ -5,7 +5,14 @@ This document provides a visual representation of the BatchGrader application's 
 ## Component Diagram
 
 ```mermaid
-%%{init: { 'theme': 'dark' } }%%
+%%{init: { 'theme': 'dark', 'themeVariables': {
+      'background': '#0d1117',
+      'primaryColor': '#21262d',      /* Background of the class boxes */
+      'primaryTextColor': '#c9d1d9', /* Text color inside class boxes */
+      'primaryBorderColor': '#8b949e',/* Border of the class boxes */
+      'lineColor': '#8b949e',        /* Arrow and line color */
+      'textColor': '#c9d1d9'         /* General text color (e.g., for 'uses' labels) */
+}}}%%
 classDiagram
     class batch_runner {
         +process_file(filepath)
