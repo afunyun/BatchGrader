@@ -101,7 +101,7 @@ poll_interval_seconds: 60      # Polling interval for batch job status (seconds)
 max_tokens_per_response: 1000  # Max tokens per LLM response. Not really super applicable unless you're expecting a response that isn't a single number.
 response_field: response       # Field/column in input data to evaluate
 batch_api_endpoint: /v1/chat/completions   # OpenAI batch API endpoint... not usually something to change
-
+token_limit: 2_000_000
 ```
 
 ## Prompt Configuration
@@ -169,9 +169,11 @@ Edit this prompt to match your evaluation criteria. The prompt should instruct t
 
 **OpenAI themselves limit the amount of requests per batch. See above if you're wondering why there's a 50k/request cap.**
 
-**This does not currently take into account your Tokens-Per-Day limit, as that's entirely dependent on your organization's limit. You can find that information here: <https://platform.openai.com/settings/organization/limits>**
+**Tier 1 is 2,000,000 TPD. This is the default setting. Your limit may be higher or lower. You can find that information here: <https://platform.openai.com/settings/organization/limits>. If you so choose, you can increase/decrease this via the config.yaml:**
 
-**Tier 1 is 2,000,000 TPD.**
+```yaml
+token_limit: 2_000_000 #change to whatever your limit is
+```
 
 ## Input/Output Formats
 

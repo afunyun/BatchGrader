@@ -8,12 +8,14 @@ from evaluator import load_prompt_template
 from config_loader import load_config, CONFIG_DIR, is_examples_file_default
 from llm_client import LLMClient
 from cost_estimator import CostEstimator
+from token_tracker import update_token_log, get_token_usage_for_day
 
 config = load_config()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INPUT_DIR = str(PROJECT_ROOT / config['input_dir'])
 OUTPUT_DIR = str(PROJECT_ROOT / config['output_dir'])
 RESPONSE_FIELD = config['response_field']
+TOKEN_LIMIT = config.get('token_limit', 2_000_000)
 
 model_name = config['openai_model_name']
 
@@ -25,6 +27,7 @@ def process_file(filepath):
     Processes a single input file using the OpenAI Batch API workflow via LLMClient.
     Loads data, prepares batch requests, manages the batch job, processes results, and saves output.
     Handles errors and logs appropriately.
+    Enforces a 2,000,000 token cap per batch, halts and warns if exceeded, and logs daily submitted tokens per API key (censored) in output/token_usage_log.json.
 
     Args:
         filepath (str): Path to the input file to process.
@@ -104,6 +107,22 @@ def process_file(filepath):
             avg_tokens = token_counts.mean()
             max_tokens = token_counts.max()
             print(f"[SUBMITTED TOKENS] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+
+            if total_tokens > TOKEN_LIMIT:
+                print(f"[ERROR] Total submitted tokens ({total_tokens}) exceeds the allowed cap of {TOKEN_LIMIT} for a single batch.")
+                print("Please reduce your batch size or check your usage at https://platform.openai.com/usage.")
+                print("Batch submission halted. No API calls were made.")
+                try:
+                    llm_client = LLMClient()
+                    update_token_log(llm_client.api_key, 0)
+                except Exception as e:
+                    print(f"[WARN] Could not log token usage: {e}")
+                return
+            try:
+                llm_client = LLMClient()
+                update_token_log(llm_client.api_key, int(total_tokens))
+            except Exception as e:
+                print(f"[WARN] Could not log token usage: {e}")
         else:
             print("[WARN] Token counting skipped (tiktoken unavailable or model unknown).")
 
@@ -151,8 +170,6 @@ def process_file(filepath):
         print(f"An error occurred while processing {filepath}: {e}")
         error_basename = f"ERROR_{filename}"
         error_base_path = os.path.join(OUTPUT_DIR, error_basename)
-        
-        # Check if error file already exists and generate unique filename if needed
         if os.path.exists(error_base_path):
             file_root, file_ext = os.path.splitext(error_basename)
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -172,15 +189,23 @@ def process_file(filepath):
                 with open(error_df_path, 'w') as f_err:
                     f_err.write(f"Failed to process {filepath}.\nError: {e}\n")
                 print(f"Logged error to {error_df_path} as DataFrame was not available/processed.")
-
         except Exception as save_err:
             print(f"Rare double fail, exception in processing and then exception to save error state for {filepath}: {save_err}... it's over.")
 
 if __name__ == "__main__":
-    print("Starting batch_runner.py...")
+    llm_client = LLMClient()
+    if not llm_client.api_key:
+        print("Error: OPENAI_API_KEY not set in config/config.yaml.")
+    else:
+        tokens_today = get_token_usage_for_day(llm_client.api_key)
+        print("\n================= API USAGE =================")
+        print(f"TOTAL TOKENS SUBMITTED TODAY: {tokens_today:,}")
+        print(f"TOKEN LIMIT: {TOKEN_LIMIT}")
+        print(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
+        print("=============================================\n")
+    print("Starting batch processing...")
     print(f"Valid INPUT_DIR: {INPUT_DIR}")
     print(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
-    llm_client = LLMClient()
     if not llm_client.api_key:
         print("Error: OPENAI_API_KEY not set in config/config.yaml.")
     else:
@@ -191,4 +216,4 @@ if __name__ == "__main__":
         for file_to_process in files_found:
             full_filepath = os.path.join(INPUT_DIR, file_to_process)
             process_file(full_filepath)
-        print("batch_runner.py finished processing.")
+        print("Batch finished processing.")

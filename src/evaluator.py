@@ -1,5 +1,5 @@
 '''
-name is misleading because stuff changes but this basically just loads the prompts and prepares the prompts for the main constructor of the .jsonl for the batch request.
+name is misleading because hindsight is 20/20, but this basically just loads the prompts and prepares the prompts for the main batch request constructor so it can add them to the .jsonl
 '''
 import yaml
 
@@ -27,16 +27,9 @@ def load_prompt_template(name='evaluation_prompt'):
     except Exception as e:
         raise RuntimeError(f"Failed to load prompt '{name}' from both prompts.yaml and DEFAULT_PROMPTS: {e}, this should REALLY never happen. It's joever.")
 
+# def prepare_prompt(template, response):
+#     return template.format(response=response)
 
-def prepare_prompt(template, response):
-    """
-    Prepares a single prompt for the batch request. It is a strange situation indeed if this is used.
-    """
-    return template.format(response=response)
-
-def prepare_batch_prompt(template, responses):
-    """
-    Prepares a batch prompt for the batch request.
-    """
-    batch_list = '\n'.join(f"{i+1}: {resp}" for i, resp in enumerate(responses))
-    return template.format(batch_list=batch_list)
+# def prepare_batch_prompt(template, responses):
+#     batch_list = '\n'.join(f"{i+1}: {resp}" for i, resp in enumerate(responses))
+#     return template.format(batch_list=batch_list)

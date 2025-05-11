@@ -12,12 +12,13 @@ DEFAULT_CONFIG = {
     'examples_dir': '../examples/examples.txt',
     'openai_model_name': 'gpt-4o-mini-2024-07-18',
     # only use if you hate security (like i did in the first versions lol)
-    # system will pull from environment variables if it's set there.
-    # 'openai_api_key': 'YOUR_OPENAI_API_KEY_HERE',
+    # system will pull from environment variables FIRST if it's set there.
+    # openai_api_key: YOUR_OPENAI_API_KEY_HERE
     'poll_interval_seconds': 60,
     'max_tokens_per_response': 1000,
     'response_field': 'response',
     'batch_api_endpoint': '/v1/chat/completions',
+    'token_limit': 2_000_000
 }
 
 DEFAULT_EXAMPLES_TEXT = "This file would contain examples of the target style. If you want it to be used in the prompt, add it to the config.yaml file."
@@ -86,12 +87,17 @@ def load_config():
     Prefers environment variable for API key since that's secure or some shit.
     Returns:
         dict: Configuration parameters.
-    Raises:
-        yaml.YAMLError: If the config file is invalid.
+    Raises RuntimeError if it encounters a badly formatted config file.
+    Raises ValueError if it encounters a missing config file.
     """
     ensure_config_files()
-    with open(CONFIG_PATH, 'r') as f:
-        config = yaml.safe_load(f)
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            config = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise RuntimeError(f"Incorrectly formatted config.yaml: {e}") from e
+    if not config:
+        raise ValueError("Failed to load config file. How? Very carefully, since if it weren't there it should've been created.")
     env_api_key = os.getenv('OPENAI_API_KEY')
     if env_api_key:
         config['openai_api_key'] = env_api_key
