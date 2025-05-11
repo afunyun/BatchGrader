@@ -55,7 +55,11 @@ def _generate_chunk_job_objects(
 
     jobs = []
     force_chunk_count = config.get('force_chunk_count', 0)
+    # All chunked input files are written to input/_chunked/ for clarity, cleanup, and to avoid cluttering the main input/ directory.
+    # This convention is enforced here and in the input_splitter. All code that references chunked files must use this location.
     input_dir = os.path.dirname(original_filepath)
+    chunked_dir = os.path.join(input_dir, '_chunked')
+    os.makedirs(chunked_dir, exist_ok=True)
     base_name, ext = os.path.splitext(os.path.basename(original_filepath))
     df = pd.read_csv(original_filepath) if ext.lower() == '.csv' else pd.read_json(original_filepath, lines=ext.lower() == '.jsonl')
 
@@ -70,7 +74,7 @@ def _generate_chunk_job_objects(
             chunk_df = df.iloc[start_idx:end_idx].copy()
             if chunk_df.empty:
                 continue
-            with tempfile.NamedTemporaryFile(delete=False, dir=input_dir, suffix=ext, prefix=f"{base_name}_forcedchunk_{i+1}_of_{force_chunk_count}_") as tmp_f:
+            with tempfile.NamedTemporaryFile(delete=False, dir=chunked_dir, suffix=ext, prefix=f"{base_name}_forcedchunk_{i+1}_of_{force_chunk_count}_") as tmp_f:
                 if ext.lower() == '.csv':
                     chunk_df.to_csv(tmp_f.name, index=False)
                 else:

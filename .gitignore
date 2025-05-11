@@ -8,6 +8,8 @@ examples/*.txt
 input/*.csv
 input/*.json
 input/*.jsonl
+# Ignore chunked input files (auto-generated, not user data)
+input/_chunked/
 output/*.csv
 output/*.json
 output/*.jsonl

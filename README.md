@@ -2,6 +2,11 @@
 
 ## Last updated: 2025-05-11
 
+### [0.3.1] (2025-05-11)
+
+- Fixed chunking (whoops)
+- Fixed storage locations in general
+
 ### [0.3.0] (2025-05-11)
 
 - Implemented rich library for console output rather than basic prints, should prevent massive console spamming and also just look better//be more usable/extensible
@@ -114,14 +119,10 @@ All configuration is managed via simple YAML.
 
 ### 🚧 Current TODO / Action Items
 
-- **Support richer evaluation outputs:**  
+- **Support richer evaluation outputs:**
+  **IN PROGRESS**
   Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
   (Probably already works tbh, just wary of saying you can do this without actually trying it.)
-
-### IN PROGRESS
-
-- **Support multiple batches:**
-  Optionally submit multiple batches of n token count simultaneously, if desired. Splitting to a desired token count is now supported but we still cannot submit and track multiple branches simultaneously.
 
 ---
 
