@@ -36,14 +36,10 @@ def process_file(filepath):
     """
     filename = os.path.basename(filepath)
     base_output_path = os.path.join(OUTPUT_DIR, filename)
-    
-    # Check if output file already exists and generate unique filename if needed
+
     if os.path.exists(base_output_path):
-        # Get file extension (if any)
         file_root, file_ext = os.path.splitext(filename)
-        # Generate a timestamp string
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Create a new filename with timestamp
         new_filename = f"{file_root}_{timestamp}{file_ext}"
         output_path = os.path.join(OUTPUT_DIR, new_filename)
         print(f"Output file already exists. Using new filename: {new_filename}")
@@ -229,7 +225,6 @@ if __name__ == "__main__":
         print(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats I'm both worried and impressed, please reformat.)")
         exit(0)
 
-    # Use token counting logic from process_file (tiktoken required)
     def get_token_counter(system_prompt_content, response_field, enc):
         def count_submitted_tokens(row):
             sys_tokens = len(enc.encode(system_prompt_content))
