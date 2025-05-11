@@ -2,7 +2,9 @@
 
 ## Last updated: 2025-05-11
 
-- Version: 0.2.4 - Fixed tiktoken error output to actually raise an exception instead of printing an error to console and then exiting. Deleted redundant docs images (NOOOOO). Update console output to provide more information about the current runtime while the batch_runner is running - previously it was fairly hard to see what options were actually running. Added `split_token_limit` to config.yaml to allow for splitting input files into chunks that do not exceed the configured token limit. CLI and normal operation now respect this limit rather than the Token Limit if it is applicable.
+- Version: 0.2.5 - Added `batch_runner.py` to allow for use of the command I provided XD. Update pyproject version because it was a crisp 5 "versions" (updates) behind. Prep for update check method because I want to be able to check for updates. I change things at random and frequently like a boss.
+
+- Version: 0.2.4 - Fixed tiktoken error output to actually raise an exception instead of printing an error to console and then exiting. Deleted redundant docs images (NOOOOO). Update console output to provide more information about the current runtime while the `batch_runner.py` is running - previously it was fairly hard to see what options were actually running. Added `split_token_limit` to config.yaml to allow for splitting input files into chunks that do not exceed the configured token limit. CLI and normal operation now respect this limit rather than the Token Limit if it is applicable.
 
 - Version: 0.2.3 - Release fixes - everything seems to ...work... on my machine at least. Testing leaves something to be desired. Also managed to annihilate the branches for a second.
 
