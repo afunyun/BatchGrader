@@ -1,6 +1,6 @@
 [project]
 name = "batchgrader"
-version = "0.2.5"
+version = "0.3.0"
 description = "Simple cli/config based batch job tool for OpenAI API."
 authors = [
     {name = "afunyun", email = "github@afjaun.mozmail.com"}
@@ -40,7 +40,8 @@ dependencies = [
     "typing-extensions==4.13.2",
     "typing-inspection==0.4.0",
     "tzdata==2025.2",
-    "urllib3==2.4.0"
+    "urllib3==2.4.0",
+    "rich>=14.0.0"
 ]
 
 [build-system]

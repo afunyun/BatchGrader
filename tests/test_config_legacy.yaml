@@ -1,0 +1,8 @@
+input_dir: tests/input
+output_dir: tests/output
+max_simultaneous_batches: 2
+force_chunk_count: 0
+split_token_limit: 500000
+halt_on_chunk_failure: true
+response_field: text
+openai_model_name: gpt-4o-mini-2024-07-18
