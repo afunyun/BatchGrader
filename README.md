@@ -1,5 +1,9 @@
 # BatchGrader: Batch LLM Evaluation with OpenAI Batch API
 
+## Last updated: 2025-05-11
+
+Version: 0.2.1 - fixed cli args which i managed to put in horribly broken, nice, unified loading logic as well for args
+
 ## Overview
 
 BatchGrader is a quick and dirty tool for batch evaluation of text data using the OpenAI Batch API. It is designed for grading, scoring, or classifying large sets of LLM-generated responses or any text data.
@@ -309,5 +313,3 @@ BatchGrader/
 </pre>
 
 ![architecture](docs/architecture.png)
-
-## Last updated: 2025-05-11 (added token counting, input splitting, previous submission logging, license.)

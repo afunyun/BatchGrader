@@ -205,32 +205,45 @@ if __name__ == "__main__":
     print(f"Valid INPUT_DIR: {INPUT_DIR}")
     print(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
 
-    files_found = []
     # ---
-    # File argument resolution logic (2025-05-11, updated):
-    # - If --file is absolute, use as-is.
-    # - If --file contains a directory (e.g. input/foo.csv), resolve relative to PROJECT_ROOT.
-    # - If --file is just a filename, resolve as INPUT_DIR/filename.
-    # This prevents double 'input/input/' and allows flexible CLI usage.
+    # Shared file path resolution and data loading logic for CLI file operations (2025-05-11)
+    # - If path is absolute, use as-is.
+    # - If path has a directory, resolve relative to PROJECT_ROOT.
+    # - If just a filename, resolve as INPUT_DIR/filename.
+    # Returns (resolved_path, df)
     # ---
-    if args.file:
-        from pathlib import Path
-        file_arg_path = Path(args.file)
+    from pathlib import Path
+    def resolve_and_load_input_file(file_arg):
+        """
+        Resolves the file path for CLI input and loads the data.
+        - Absolute path: used as-is
+        - Relative with directory: resolved from project root
+        - Bare filename: resolved from input dir
+        Returns (resolved_path, DataFrame)
+        """
+        file_arg_path = Path(file_arg)
         if file_arg_path.is_absolute():
             resolved_path = str(file_arg_path)
         elif file_arg_path.parent != Path('.'):
-            # Has a directory part, resolve relative to project root
             resolved_path = str((PROJECT_ROOT / file_arg_path).resolve())
         else:
-            # Just a filename
-            resolved_path = os.path.join(INPUT_DIR, args.file)
+            resolved_path = os.path.join(INPUT_DIR, file_arg)
         if not os.path.exists(resolved_path):
-            print(f"File {args.file} not found at {resolved_path}.")
+            print(f"File {file_arg} not found at {resolved_path}.")
             exit(1)
-        files_found = [resolved_path]
+        df = load_data(resolved_path)
+        return resolved_path, df
+
+    files_found = []
+    if args.file:
+        resolved_path, df = resolve_and_load_input_file(args.file)
+        files_found = [(resolved_path, df)]
     else:
-        files_found = [file_to_process for file_to_process in os.listdir(INPUT_DIR)
-                    if file_to_process.endswith((".csv", ".json", ".jsonl"))]
+        files_found = []
+        for file_to_process in os.listdir(INPUT_DIR):
+            if file_to_process.endswith((".csv", ".json", ".jsonl")):
+                resolved_path, df = resolve_and_load_input_file(file_to_process)
+                files_found.append((resolved_path, df))
     if not files_found:
         print(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats I'm both worried and impressed, please reformat.)")
         exit(0)
@@ -243,10 +256,8 @@ if __name__ == "__main__":
             return sys_tokens + user_tokens
         return count_submitted_tokens
 
-    for file_to_process in files_found:
-        full_filepath = os.path.join(INPUT_DIR, file_to_process)
-        print(f"\nProcessing file: {full_filepath}")
-        df = load_data(full_filepath)
+    for resolved_path, df in files_found:
+        print(f"\nProcessing file: {resolved_path}")
         
         examples_dir = config.get('examples_dir')
         if not examples_dir:
@@ -282,13 +293,17 @@ if __name__ == "__main__":
             max_tokens = token_counts.max()
             print(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
             if args.split_tokens:
+                # ---
+                # Fix: Use os.path.basename(resolved_path) for display, resolved_path for file operations
+                # ---
+                display_name = os.path.basename(resolved_path)
                 if total_tokens <= TOKEN_LIMIT:
-                    print(f"File {file_to_process} does not exceed the token limit. No split needed.")
+                    print(f"File {display_name} does not exceed the token limit. No split needed.")
                 else:
-                    print(f"Splitting {file_to_process} into chunks not exceeding {TOKEN_LIMIT} tokens...")
-                    output_files = split_file_by_token_limit(full_filepath, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
+                    print(f"Splitting {display_name} into chunks not exceeding {TOKEN_LIMIT} tokens...")
+                    output_files = split_file_by_token_limit(resolved_path, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
                     print(f"Split complete. Output files: {output_files}")
             continue
         
-        process_file(full_filepath)
+        process_file(resolved_path)
     print("Batch finished processing.")
