@@ -28,17 +28,12 @@ All configuration is managed via simple YAML.
 
 ### 🚧 Current TODO / Action Items
 
-**URGENT:**
-
-- Fix multiple input files continuing to run/submit jobs if a reply comes back with errors.
--- preliminary fix in, let me know if it fails
-
 - **Support richer evaluation outputs:**  
   Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
   (Probably already works tbh, just wary of saying you can do this without actually trying it.)
 
 - **Support multiple batches:**
-  Optionally submit multiple batches of n token count simultaneously, if desired.
+  Optionally submit multiple batches of n token count simultaneously, if desired. Splitting to a desired token count is now supported but we still cannot submit and track multiple branches simultaneously.
 
 ---
 

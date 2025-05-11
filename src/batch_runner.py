@@ -126,7 +126,7 @@ def process_file(filepath):
         MAX_BATCH_SIZE = 50000
         if len(df) > MAX_BATCH_SIZE:
             print(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
-            df = df.iloc[:MAX_BATCH_SIZE].copy() ##TODO - split into multiple batches and monitor all.
+            df = df.iloc[:MAX_BATCH_SIZE].copy() ##TODO - submit the split batches and monitor all simultaneously.
 
         llm_client = LLMClient()
         try:
@@ -142,7 +142,6 @@ def process_file(filepath):
         error_rows = df_with_results['llm_score'].str.contains('Error', case=False)
         if error_rows.any():
             print(f"Total rows with errors: {error_rows.sum()}")
-            # If ALL rows have errors, treat as batch failure and halt further processing
             if error_rows.sum() == len(df_with_results):
                 print(f"[BATCH FAILURE] All rows failed for {filepath}. Halting further processing.")
                 return False
@@ -287,7 +286,6 @@ if __name__ == "__main__":
                     raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
                 system_prompt_content = system_prompt_template.format(dynamic_examples=formatted_examples)
 
-            # Tokenizer
             try:
                 import tiktoken
                 enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
@@ -316,7 +314,6 @@ if __name__ == "__main__":
                             print(f"Output file: {out_file} | Tokens: {tok_count}")
                 continue
 
-            # Call process_file and halt further processing if it returns False
             ok = process_file(resolved_path)
             if not ok:
                 print(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")
