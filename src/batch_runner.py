@@ -166,29 +166,22 @@ def process_file(filepath):
 
     except Exception as e:
         print(f"An error occurred while processing {filepath}: {e}")
-        error_basename = f"ERROR_{filename}"
-        error_base_path = os.path.join(OUTPUT_DIR, error_basename)
-        if os.path.exists(error_base_path):
-            file_root, file_ext = os.path.splitext(error_basename)
+        log_basename = os.path.splitext(filename)[0] + ".log"
+        log_base_path = os.path.join(OUTPUT_DIR, log_basename)
+        if os.path.exists(log_base_path):
+            file_root, file_ext = os.path.splitext(log_basename)
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_error_filename = f"{file_root}_{timestamp}{file_ext}"
-            error_df_path = os.path.join(OUTPUT_DIR, new_error_filename)
-            print(f"Error output file already exists. Using new filename: {new_error_filename}")
+            new_log_filename = f"{file_root}_{timestamp}{file_ext}"
+            log_path = os.path.join(OUTPUT_DIR, new_log_filename)
+            print(f"Log file already exists. Using new filename: {new_log_filename}")
         else:
-            error_df_path = error_base_path
+            log_path = log_base_path
         try:
-            if df is not None and not df.empty:
-                if 'custom_id' not in df.columns:
-                    df['custom_id'] = [str(uuid.uuid4()) for _ in range(len(df))]
-                df['llm_score'] = f"Error during processing: {e}"
-                save_data(df.drop(columns=['custom_id'], errors='ignore'), error_df_path)
-                print(f"Saved error information to {error_df_path}")
-            else:
-                with open(error_df_path, 'w') as f_err:
-                    f_err.write(f"Failed to process {filepath}.\nError: {e}\n")
-                print(f"Logged error to {error_df_path} as DataFrame was not available/processed.")
+            with open(log_path, 'w') as f_log:
+                f_log.write(f"Failed to process {filepath}.\nError: {e}\n")
+            print(f"Logged error to {log_path}")
         except Exception as save_err:
-            print(f"Rare double fail, exception in processing and then exception to save error state for {filepath}: {save_err}... it's over.")
+            print(f"Double fail: exception in processing and then in saving error log for {filepath}: {save_err} ... aborting.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
