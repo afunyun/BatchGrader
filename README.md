@@ -51,6 +51,8 @@ All configuration is managed via simple YAML.
   Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
   (Probably already works tbh, just wary of saying you can do this without actually trying it.)
 
+### IN PROGRESS ###
+
 - **Support multiple batches:**
   Optionally submit multiple batches of n token count simultaneously, if desired. Splitting to a desired token count is now supported but we still cannot submit and track multiple branches simultaneously.
 
