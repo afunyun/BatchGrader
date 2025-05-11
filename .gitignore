@@ -1,0 +1,26 @@
+# Local virtual environment
+batchvenv/
+
+# Potentially Sensitive shit
+config/config.yaml
+config/prompts.yaml
+examples/*.txt
+input/*.csv
+input/*.json
+input/*.jsonl
+output/*.csv
+output/*.json
+output/*.jsonl
+docs/scratchpad.md 
+
+# temp files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+
+# editor related
+.vscode/
+.markdownlint.json
