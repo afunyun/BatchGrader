@@ -54,7 +54,7 @@ def process_file(filepath):
         MAX_BATCH_SIZE = 50000
         if len(df) > MAX_BATCH_SIZE:
             print(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
-            df = df.iloc[:MAX_BATCH_SIZE].copy()
+            df = df.iloc[:MAX_BATCH_SIZE].copy() ##TODO - split into multiple batches and monitor all.
 
         examples_dir = config.get('examples_dir')
         if not examples_dir:

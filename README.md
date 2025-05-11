@@ -25,6 +25,9 @@ All configuration is managed via simple YAML.
 - **Improve tiktoken handling:**  
   Convert the tiktoken dependency check into a config option, or relocate it to the main execution loop.  
 
+- **Support multiple batches/request splitting:**
+  For batch requests >50k tokens, split the files into multiple .jsonl requests and track/handle all requests.
+
 ---
 
 ## Setup & Installation
