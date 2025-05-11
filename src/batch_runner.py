@@ -15,6 +15,8 @@ INPUT_DIR = str(PROJECT_ROOT / config['input_dir'])
 OUTPUT_DIR = str(PROJECT_ROOT / config['output_dir'])
 RESPONSE_FIELD = config['response_field']
 
+model_name = config['openai_model_name']
+
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -47,14 +49,7 @@ def process_file(filepath):
     df = None
     try:
         df = load_data(filepath)
-        if df.empty:
-            print(f"No data loaded from {filepath}. Skipping.")
-            return
-
-        MAX_BATCH_SIZE = 50000
-        if len(df) > MAX_BATCH_SIZE:
-            print(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
-            df = df.iloc[:MAX_BATCH_SIZE].copy() ##TODO - split into multiple batches and monitor all.
+        print(f"Loaded {len(df)} rows from {filepath}")
 
         examples_dir = config.get('examples_dir')
         if not examples_dir:
@@ -77,6 +72,50 @@ def process_file(filepath):
                 raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
             system_prompt_content = system_prompt_template.format(dynamic_examples=formatted_examples)
 
+        try:
+            import tiktoken
+            enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
+        except Exception:
+            print("[WARN] tiktoken not available, cannot count tokens accurately.")
+            enc = None
+
+        def count_input_tokens_per_row(row, system_prompt_content, response_field, enc):
+            if enc is None:
+                return 0
+            sys_tokens = len(enc.encode(system_prompt_content))
+            user_prompt = f"Please evaluate the following text: {str(row[response_field])}"
+            user_tokens = len(enc.encode(user_prompt))
+            return sys_tokens + user_tokens
+
+        def count_completion_tokens(row, enc):
+            if enc is None:
+                return 0
+            completion = row.get('llm_score', '')
+            return len(enc.encode(str(completion)))
+
+        if enc is not None:
+            def count_submitted_tokens(row):
+                sys_tokens = len(enc.encode(system_prompt_content))
+                user_prompt = f"Please evaluate the following text: {str(row[RESPONSE_FIELD])}"
+                user_tokens = len(enc.encode(user_prompt))
+                return sys_tokens + user_tokens
+            token_counts = df.apply(count_submitted_tokens, axis=1)
+            total_tokens = token_counts.sum()
+            avg_tokens = token_counts.mean()
+            max_tokens = token_counts.max()
+            print(f"[SUBMITTED TOKENS] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+        else:
+            print("[WARN] Token counting skipped (tiktoken unavailable or model unknown).")
+
+        if df.empty:
+            print(f"No data loaded from {filepath}. Skipping.")
+            return
+
+        MAX_BATCH_SIZE = 50000
+        if len(df) > MAX_BATCH_SIZE:
+            print(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
+            df = df.iloc[:MAX_BATCH_SIZE].copy() ##TODO - split into multiple batches and monitor all.
+
         llm_client = LLMClient()
         df_with_results = llm_client.run_batch_job(
             df, system_prompt_content, response_field_name=RESPONSE_FIELD, base_filename_for_tagging=filename
@@ -89,33 +128,13 @@ def process_file(filepath):
             print(f"Total rows with errors: {error_rows.sum()}")
         
         try:
-            try:
-                import tiktoken
-            except ImportError:
-                print("tiktoken is not installed. You should rerun 'uv pip install -r requirements.txt' probably.")
-                tiktoken = None
             input_col_name = 'input_tokens'
             output_col_name = 'output_tokens'
-            if (tiktoken is None) and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
+            if enc is None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
                 raise RuntimeError("tiktoken is required for cost estimation but is not installed.")
-            if tiktoken and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
-                encoding = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-2024-08-06'))
-                def count_prompt_tokens(row):
-                    system_prompt = row.get('system_prompt', '') if 'system_prompt' in row else ''
-                    user_prompt = row.get(RESPONSE_FIELD, '')
-                    messages = []
-                    if system_prompt:
-                        messages.append({"role": "system", "content": system_prompt})
-                    messages.append({"role": "user", "content": f"Please evaluate the following text: {user_prompt}"})
-                    tokens = 0
-                    for msg in messages:
-                        tokens += len(encoding.encode(msg['content']))
-                    return tokens
-                def count_completion_tokens(row):
-                    completion = row.get('llm_score', '')
-                    return len(encoding.encode(str(completion)))
-                df_with_results[input_col_name] = df_with_results.apply(count_prompt_tokens, axis=1)
-                df_with_results[output_col_name] = df_with_results.apply(count_completion_tokens, axis=1)
+            if enc is not None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
+                df_with_results[input_col_name] = df_with_results.apply(lambda row: count_input_tokens_per_row(row, system_prompt_content, RESPONSE_FIELD, enc), axis=1)
+                df_with_results[output_col_name] = df_with_results.apply(lambda row: count_completion_tokens(row, enc), axis=1)
             n_input_tokens = int(df_with_results[input_col_name].sum()) if input_col_name in df_with_results.columns else 0
             n_output_tokens = int(df_with_results[output_col_name].sum()) if output_col_name in df_with_results.columns else 0
             model_name = config.get('openai_model_name', 'gpt-4o-2024-08-06')
@@ -125,7 +144,7 @@ def process_file(filepath):
             except Exception as ce:
                 print(f"Could not estimate cost: {ce}")
         except Exception as cost_exception:
-            print(f"[Cost Estimation Error] {cost_exception}") ##TODO: see readme action items, fix location of this hack
+            print(f"[Cost Estimation Error] {cost_exception}")
 
 
     except Exception as e:
