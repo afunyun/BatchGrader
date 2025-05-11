@@ -7,3 +7,6 @@ max_tokens_per_response: 1000
 response_field: assistant_content
 batch_api_endpoint: /v1/chat/completions
 examples_dir: examples/examples.txt
+token_limit: 2000000
+split_token_limit: 500000   # Max tokens per split file (default ~500k)
+split_row_limit: null       # Max rows per split file (optional, default: unlimited)

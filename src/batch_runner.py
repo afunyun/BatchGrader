@@ -320,8 +320,10 @@ if __name__ == "__main__":
                         print(f"File {display_name} does not exceed the token limit. No split needed.")
                     else:
                         print(f"Splitting {display_name} into chunks not exceeding {TOKEN_LIMIT} tokens...")
-                        output_files = split_file_by_token_limit(resolved_path, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
+                        output_files, token_counts = split_file_by_token_limit(resolved_path, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
                         print(f"Split complete. Output files: {output_files}")
+                        for out_file, tok_count in zip(output_files, token_counts):
+                            print(f"Output file: {out_file} | Tokens: {tok_count}")
                 continue
 
             # Call process_file and halt further processing if it returns False
