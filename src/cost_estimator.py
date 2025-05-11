@@ -55,8 +55,7 @@ class CostEstimator:
         cost = (n_input_tokens / 1_000_000) * input_price + (n_output_tokens / 1_000_000) * output_price
         return cost
 
-# Example usage (for testing):
-if __name__ == "__main__":
+if __name__ == "__main__": # this is just here for testing
     estimator = CostEstimator()
     cost = estimator.estimate_cost("gpt-4o-2024-08-06", 1200000, 800000)
-    print(f"Estimated cost: ${cost:.4f}")
+    print(f"Estimated cost: ${cost:.4f}") 
