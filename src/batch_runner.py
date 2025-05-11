@@ -4,9 +4,10 @@ import datetime
 import argparse
 import sys
 
+# Ensure project root is in sys.path for src.* imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from pathlib import Path
-import sys
-import os
 from src.logger import logger, BatchGraderLogger
 from data_loader import load_data, save_data
 from evaluator import load_prompt_template
@@ -503,6 +504,7 @@ if __name__ == "__main__":
             resolved_path = os.path.join(INPUT_DIR, file_arg)
         if not os.path.exists(resolved_path):
             logger.error(f"File {file_arg} not found at {resolved_path}.")
+            logger.error("Halting: Missing input file.")
             exit(1)
         df = load_data(resolved_path)
         return resolved_path, df

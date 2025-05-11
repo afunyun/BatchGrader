@@ -49,8 +49,7 @@ def run_test(test):
     cmd = [
         sys.executable, '-u', 'src/batch_runner.py',
         '--config', test['config'],
-        '--file', test['input'],
-        '--log_dir', 'tests/logs'
+        '--file', test['input']
     ]
     try:
         result = subprocess.run(cmd)

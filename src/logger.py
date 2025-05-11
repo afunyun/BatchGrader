@@ -27,6 +27,8 @@ class BatchGraderLogger:
         formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         file_handler.setFormatter(formatter)
         self.file_logger.addHandler(file_handler)
+        # Log a startup message immediately
+        self.info(f"BatchGrader run started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     def _log(self, msg, level='INFO', color=None):
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
