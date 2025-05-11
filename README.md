@@ -8,11 +8,11 @@ All configuration is managed via simple YAML.
 
 ## Features
 
-- **YAML Configuration:** All runtime settings are in `config/config.yaml`.
-- **Prompt Templates:** Prompts are managed in `config/prompts.yaml`.
-- **Supports examples:** You can provide examples to the LLM in case your evaluation criteria require this, allowing the evaluator LLM additional context without having to directly change your prompt itself.
-- **Supports CSV, JSON, JSONL:** Flexible input/output formats.
-- **Cost Estimation:** BatchGrader can estimate the cost of running a batch job based on the number of tokens used. This is done using the OpenAI Batch API pricing. This is located in 'docs/pricing.csv', and it isn't dynamically updated lol. Make sure it's accurate.  
+- YAML-based configuration (config/config.yaml, config/prompts.yaml).
+- Contextual evaluation with user-provided examples.
+- Supports CSV, JSON, JSONL input/output.
+- Cost estimation via docs/pricing.csv.
+- Token tracking and input splitting utilities.
 
 ---
 
@@ -33,10 +33,7 @@ All configuration is managed via simple YAML.
 
 1. **Prerequisites:**
    - Python 3.7+
-   - recommended:
-     - `astral-uv` (best)
-     - `poetry` is supported but not preferred (I do not update the pyproject.toml frequently/ever)
-     - else: `pip` should work fine but I mean vanilla pip in 2025??
+   - Recommended: uv (preferred for requirements.txt) or pip.
 
 2. **Virtual Environment (Recommended)**
 
@@ -58,10 +55,7 @@ All configuration is managed via simple YAML.
 
    - **Dependency Management (uv + requirements.txt is Canonical)**
 
-     This project uses `requirements.txt` as the canonical source of dependencies, managed via [uv](https://github.com/astral-sh/uv) (or pip).
-
-     - `requirements.txt` is authoritative. All dependency changes should be made here.
-     - `pyproject.toml` and `poetry.lock` exist for compatibility (e.g., GitHub dependency insights) but are NOT maintained as canonical.
+     - Uses requirements.txt (managed with uv or pip). pyproject.toml is for compatibility only and not actively maintained.
 
      **Installing dependencies:**
 
@@ -76,19 +70,18 @@ All configuration is managed via simple YAML.
      uv pip freeze > requirements.txt
      ```
 
-3. **Configure the System:**
-   - Edit `config/config.yaml` to set your OpenAI API key and other parameters (see below).
-   - Edit `config/prompts.yaml` to customize the evaluation prompt if needed.
+3. **Configuration:**
+   - Edit config/config.yaml (API key, paths) and config/prompts.yaml (evaluation prompts).
 
 ## Configuration (YAML)
 
-**On first run, system "should" create defaults: /config and /input. It will generate a default config.yaml and prompts.yaml, customize as needed:**
+**Default config/ and input/ directories, along with config.yaml and prompts.yaml, are created on first run if they don't exist. Customize as needed.**
 
 All runtime configuration is in `config/config.yaml`
 
 Defaults:
-
-```yaml
+<details>
+<pre>
 input_dir: input            # Directory for input files
 output_dir: output          # Directory for output files
 examples_dir: examples/examples.txt
@@ -99,13 +92,15 @@ max_tokens_per_response: 1000  # Max tokens per LLM response. Not really super a
 response_field: response       # Field/column in input data to evaluate
 batch_api_endpoint: /v1/chat/completions   # OpenAI batch API endpoint... not usually something to change
 token_limit: 2_000_000
-```
+</pre>
+</details>
 
 ## Prompt Configuration
 
 Prompts are managed in `config/prompts.yaml`. The system generated defaults as follows are used, depending on whether or not an examples file is provided (it will only do the examples version if the text is different than the default system created examples.txt):
 
-```yaml
+<details>
+<pre>
 batch_evaluation_prompt_generic: |
     You are an evaluator. Given the following message, rate its overall quality on a scale of 1 to 5.
     The scale is as follows:
@@ -115,9 +110,8 @@ batch_evaluation_prompt_generic: |
     2 - Poor
     1 - Very poor
     Output only the numerical score.
-```
-
-```yaml
+</pre>
+<pre>
 batch_evaluation_prompt: |
     You are an evaluator trying to determins the closeness of a response to a given style, examples of which will follow. Given the following examples, evaluate whether or not the response matches the target style.
     Examples:\n{dynamic_examples}\n\n
@@ -128,7 +122,8 @@ batch_evaluation_prompt: |
     2 - Not close
     1 - No match
     Output only the numerical scores, one per line, in the same order as inputs.
-```
+</pre>
+</details>
 
 Edit this prompt to match your evaluation criteria. The prompt should instruct the LLM to output only the required result (e.g., a number per line). The defaults are obviously quite lacking, they are not really intended for use other than to be 'functional' (to not cause an error) and an example of what you might want to include. You should elaborate as much as you want, the better your prompt, the better your result.
 
@@ -176,28 +171,15 @@ If neither `--count-tokens` nor `--split-tokens` is specified, the system runs t
    - The runner will process each file in the input directory, submit a batch job, and save results in the output directory once received. It will check for a completed job based on the specified value in the config. See notes below
 
 3. **Check Output:**
-   - Output files will have the same format as input, with an added `llm_score` column containing the evaluation result.
-   - Errors or partial results will be saved with an `ERROR_` prefix in the output directory.
+   - Results are in output/ with an added `llm_score` column. Errors are prefixed with `ERROR_`.
 
 ## Rate Limits
 
-```html
-Batch API rate limits are separate from existing per-model rate limits. The Batch API has two new types of rate limits:
+- The Batch API has separate rate limits (per-batch up to 50k requests/200MB file, and enqueued prompt tokens per model). It doesn't consume your standard API rate limits.
+- Default token_limit in config.yaml is 2,000,000 TPD (Tier 1); adjust as needed based on your [OpenAI Organization Limits](https://platform.openai.com/settings/organization/limits).
+- For full details, see [OpenAI's documentation](https://platform.openai.com/docs/guides/batch) or BATCH_API_REFERENCE.md. See notes regarding this, however.
 
-1. **Per-batch limits:** A single batch may include up to 50,000 requests, and a batch input file can be up to 200 MB in size. Note that `/v1/embeddings` batches are also restricted to a maximum of 50,000 embedding inputs across all requests in the batch.
-2. **Enqueued prompt tokens per model:** Each model has a maximum number of enqueued prompt tokens allowed for batch processing.
-
-There are no limits for output tokens or number of submitted requests for the Batch API today. Because Batch API rate limits are a new, separate pool, using the Batch API will not consume tokens from your standard per-model rate limits, thereby offering you a convenient way to increase the number of requests and processed tokens you can use when querying our API.
-
-```
-
-**OpenAI themselves limit the amount of requests per batch. See above if you're wondering why there's a 50k/request cap.**
-
-Beyond this, each API account will have a total daily/enqueued token limit (it is unclear whether or not it's just simulataneously enqueued, or actually per 24 hours. It's referenced both ways in their docs.)
-
-**Tier 1 is 2,000,000 TPD. This is the default setting.**
-
-Your limit may be higher or lower. You can find that information here: <https://platform.openai.com/settings/organization/limits>. If you so choose, you can increase/decrease this via the config.yaml:
+If you so choose, you can increase/decrease this via the config.yaml:
 
 ```yaml
 token_limit: 2_000_000 #change to whatever your limit is
@@ -209,53 +191,100 @@ token_limit: 2_000_000 #change to whatever your limit is
 - **JSON:** An array of objects. Each object should have the key specified by `response_field`.
 - **JSONL:** Each line is a JSON object with the key specified by `response_field`.
 
-## Troubleshooting & Notes
+## Assorted Notes
 
-- **API Key:**  
-  Ensure your OpenAI API key is set in your environment. IF YOU REALLY WANT TO, and I don't recommend it, you can set it in `config/config.yaml` under `openai_api_key: YOUR_OPENAI_API_KEY_HERE`
+- API Key: Set OPENAI_API_KEY environment variable (recommended) or in config.yaml.
+- Model Availability: Use models compatible with Batch API (see pricing table or OpenAI docs).
+- Batch API Turnaround: Up to 24 hours (often faster).
+- Prompt Engineering: Clear prompts yield better results.
+- Large Files: Submitted as single batch jobs; mind API limits (see Rate Limits or BATCH_API_REFERENCE.md).
 
-- **Model Availability:**  
-  Use a model compatible with the OpenAI Batch API.
-  See table below for available models and their pricing.
-  
-- **Batch API Turnaround:**  
-  Batch jobs may take up to 24 hours, but are often faster.
+  The OpenAI docs I've provided are obviously static. I pulled them from the site on 5/10/2025; if it's any time after that, it may be horribly out of date. I recommend checking the link above.
 
-- **Prompt Engineering:**  
-  The quality of results depends on your prompt. Ensure it is clear and outputs only the required result.
-
-- **Large Files:**  
-  Each input file is submitted as a single batch job. The Batch API has limits on file size and number of requests per batch. See the snippet from OpenAI's docs above. I also included the full API reference page in the repo if you're curious.
-
-- **[OpenAI documentation](https://platform.openai.com/docs/guides/batch)**  
-  The docs snippet and the one in this repo are obviously static. I pulled them from the site on 5/10/2025; if it's any time after that, it may be horribly out of date. I recommend checking the link above.
-
-**As of 5/10/2025, the following models are available and priced thusly in the Batch API:**
-  
-| Model                           | Input per 1M tokens | Output per 1M tokens |
-| ------------------------------- | ------------------- | -------------------- |
-| gpt-4.1-mini-2025-04-14         | $0.20               | $0.80                |
-| gpt-4.1-nano-2025-04-14         | $0.05               | $0.20                |
-| gpt-4.5-preview-2025-02-27      | $37.50              | $75.00               |
-| gpt-4o-2024-08-06               | $1.25               | $5.00                |
-| gpt-4o-mini-2024-07-18          | $0.08               | $0.30                |
-| o1-2024-12-17                   | $7.50               | $30.00               |
-| o1-pro-2025-03-19               | $75.00              | $300.00              |
-| o3-2025-04-16                   | $5.00               | $20.00               |
-| o4-mini-2025-04-16              | $0.55               | $2.20                |
-| o3-mini-2025-01-31              | $0.55               | $2.20                |
-| o1-mini-2024-09-12              | $0.55               | $2.20                |
-| computer-use-preview-2025-03-11 | $1.50               | $6.00                |
+**Pricing as of 2025-05-10. Verify with OpenAI or docs/pricing.csv (update manually as needed).**
+<details>  
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>Input per 1M tokens</th>
+      <th>Output per 1M tokens</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>gpt-4.1-mini-2025-04-14</td>
+      <td>$0.20</td>
+      <td>$0.80</td>
+    </tr>
+    <tr>
+      <td>gpt-4.1-nano-2025-04-14</td>
+      <td>$0.05</td>
+      <td>$0.20</td>
+    </tr>
+    <tr>
+      <td>gpt-4.5-preview-2025-02-27</td>
+      <td>$37.50</td>
+      <td>$75.00</td>
+    </tr>
+    <tr>
+      <td>gpt-4o-2024-08-06</td>
+      <td>$1.25</td>
+      <td>$5.00</td>
+    </tr>
+    <tr>
+      <td>gpt-4o-mini-2024-07-18</td>
+      <td>$0.08</td>
+      <td>$0.30</td>
+    </tr>
+    <tr>
+      <td>o1-2024-12-17</td>
+      <td>$7.50</td>
+      <td>$30.00</td>
+    </tr>
+    <tr>
+      <td>o1-pro-2025-03-19</td>
+      <td>$75.00</td>
+      <td>$300.00</td>
+    </tr>
+    <tr>
+      <td>o3-2025-04-16</td>
+      <td>$5.00</td>
+      <td>$20.00</td>
+    </tr>
+    <tr>
+      <td>o4-mini-2025-04-16</td>
+      <td>$0.55</td>
+      <td>$2.20</td>
+    </tr>
+    <tr>
+      <td>o3-mini-2025-01-31</td>
+      <td>$0.55</td>
+      <td>$2.20</td>
+    </tr>
+    <tr>
+      <td>o1-mini-2024-09-12</td>
+      <td>$0.55</td>
+      <td>$2.20</td>
+    </tr>
+    <tr>
+      <td>computer-use-preview-2025-03-11</td>
+      <td>$1.50</td>
+      <td>$6.00</td>
+    </tr>
+  </tbody>
+</table>
+</details>
 
 ---
 
 ## DISCLAIMER
 
-**I may have royally messed something up as is tradition, so let me know if it fails catastrophically.**
+**I wouldn't call myself a programming mastermind, so I may have royally messed something up. Let me know if it fails catastrophically.**
 
 ## Directory Structure
 
-```markdown
+<pre>
 BatchGrader/
 ├── config/
 │   ├── config.yaml
@@ -283,6 +312,6 @@ BatchGrader/
 ├── pyproject.toml
 ├── README.md
 └── ...
-```
+</pre>
 
 ## Last updated: 2025-05-11 (added token counting, input splitting, previous submission logging, license.)
