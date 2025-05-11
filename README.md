@@ -253,8 +253,6 @@ token_limit: 2_000_000 #change to whatever your limit is
 
 **I may have royally messed something up as is tradition, so let me know if it fails catastrophically.**
 
-## Directory & Execution Structure
-
 ## Directory Structure
 
 ```markdown
@@ -287,4 +285,4 @@ BatchGrader/
 └── ...
 ```
 
-## Last updated: 2025-05-11 (added token counting, input splitting, previous submission logging.)
+## Last updated: 2025-05-11 (added token counting, input splitting, previous submission logging, license.)
