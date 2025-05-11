@@ -3,6 +3,10 @@
 ## Last updated: 2025-05-11
 
 - Version 0.2.11 - Logging fixes (not the token logging tho havent looked there yet), still on the list, moving TODO up here for clarity: #TODO: Chasing a possible bug in the historical token logging.
+  -#TODO: chunked inputs should go in their own dedicated subdir of the input/ folder, so that they may be easily pruned once processing is complete - the full files contain the content so there is no information loss by doing so.
+  - Logger now always writes a clear startup message to every log file as soon as it is instantiated, guaranteeing that all log files contain at least one entry.
+  
+  - This improves traceability and debugging, especially for CI/test runs or troubleshooting failed jobs.
   - Logger always writes a startup message to avoid empty logs
   - Logging colour coding + console output is working perfectly
   - All error/exit paths now log to file before exiting w/ new logger

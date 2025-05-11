@@ -3,6 +3,16 @@ import uuid
 import datetime
 import argparse
 import sys
+import logging
+
+# --- LOG PRUNING/ARCHIVING ---
+# To prevent unbounded growth of the output/logs/ directory, prune/rotate logs before logger instantiation.
+# Moves oldest logs to output/logs/archive/ if threshold exceeded, and deletes oldest archive logs if needed.
+# See docs/scratchpad.md for rationale and changelog.
+from src.log_utils import prune_logs_if_needed
+LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'logs')
+ARCHIVE_DIR = os.path.join(LOG_DIR, 'archive')
+prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
 
 # Ensure project root is in sys.path for src.* imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -193,9 +203,18 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
         if result_dfs:
             combined = pd.concat(result_dfs, ignore_index=True)
             logger.success(f"Results aggregated. {len(combined)} rows processed.")
+            # --- CHUNKED FILE CLEANUP ---
+            # After all chunk jobs for this file are complete, prune the _chunked directory.
+            from src.file_utils import prune_chunked_dir
+            chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
+            prune_chunked_dir(chunked_dir)
             return combined
         else:
             logger.error(f"[FAILURE] All chunks failed for {filepath}.")
+            # Also prune chunked directory in failure case
+            from src.file_utils import prune_chunked_dir
+            chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
+            prune_chunked_dir(chunked_dir)
             return None
 
 
@@ -597,6 +616,23 @@ if __name__ == "__main__":
             logger.error("Halting further batch processing due to failure.")
             break
     logger.success("Batch finished processing.\n")
+
+    # --- CLEANUP LOGGERS ---
+    #
+    # Explicitly flush and close all logger file handlers to ensure all logs are written and
+    # no file handles are left open at shutdown. This is critical when running under a test
+    # harness or subprocess, as abrupt process termination can otherwise cause lost logs or
+    # resource contention. See docs/scratchpad.md for rationale and bug history.
+    for handler in getattr(logger, 'file_logger', logging.getLogger()).handlers:
+        try:
+            handler.flush()
+        except Exception:
+            pass
+        try:
+            handler.close()
+        except Exception:
+            pass
+    print("[CLEANUP] Logger handlers flushed and closed.")
 
     if show_stats:
         print_token_cost_stats()

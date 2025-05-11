@@ -42,7 +42,13 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
     print(f"[EVENT] input_split_config_loaded: {{'token_limit': {token_limit}, 'row_limit': {row_limit}}}")
 
     if output_dir is None:
-        output_dir = os.path.dirname(input_path)
+        base_input_dir = os.path.dirname(input_path)
+        output_dir = os.path.join(base_input_dir, '_chunked')
+        os.makedirs(output_dir, exist_ok=True)
+        keep_path = os.path.join(output_dir, '.keep')
+        if not os.path.exists(keep_path):
+            with open(keep_path, 'w', encoding='utf-8') as f:
+                f.write('')
     base_name = file_prefix or os.path.splitext(os.path.basename(input_path))[0]
     ext = os.path.splitext(input_path)[1].lower()
     if ext == '.csv':
@@ -63,7 +69,6 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
     split_tokens = 0
     for idx, row in df.iterrows():
         row_tokens = count_tokens_fn(row) if count_tokens_fn else 0
-        # Split if token limit or row limit reached
         if ((token_limit is not None and current_tokens + row_tokens > token_limit) or
             (row_limit is not None and len(current_rows) >= row_limit)) and current_rows:
             out_path = os.path.join(output_dir, f"{base_name}_part{part_num}{ext}")
