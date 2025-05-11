@@ -168,7 +168,9 @@ Edit this prompt to match your evaluation criteria. The prompt should instruct t
 ```
 
 **OpenAI themselves limit the amount of requests per batch. See above if you're wondering why there's a 50k/request cap.**
+
 **This does not currently take into account your Tokens-Per-Day limit, as that's entirely dependent on your organization's limit. You can find that information here: <https://platform.openai.com/settings/organization/limits>**
+
 **Tier 1 is 2,000,000 TPD.**
 
 ## Input/Output Formats
