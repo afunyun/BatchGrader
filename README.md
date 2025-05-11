@@ -34,8 +34,9 @@ All configuration is managed via simple YAML.
 1. **Prerequisites:**
    - Python 3.7+
    - recommended:
-     - `astral-uv` (preferred over vanilla pip)
-     - else: `pip`
+     - `astral-uv` (best)
+     - `poetry` is supported but not preferred (I do not update the pyproject.toml frequently/ever)
+     - else: `pip` should work fine but I mean vanilla pip in 2025??
 
 2. **Virtual Environment (Recommended)**
 
