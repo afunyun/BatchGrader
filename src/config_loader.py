@@ -7,11 +7,13 @@ CONFIG_PATH = CONFIG_DIR / 'config.yaml'
 PROMPTS_PATH = CONFIG_DIR / 'prompts.yaml'
 
 DEFAULT_CONFIG = {
+    'max_simultaneous_batches': 2,  # TESTING Number of parallel batch jobs per input file (concurrent chunk processing)
+    'force_chunk_count': 0,         # TESTING If >1, forcibly split input into this many chunks regardless of token limits (for speed)
+    'halt_on_chunk_failure': True,  # TESTING If True, aborts remaining chunks for a file if any chunk fails critically
     'input_dir': '../input',
     'output_dir': '../output',
     'examples_dir': '../examples/examples.txt',
     'openai_model_name': 'gpt-4o-mini-2024-07-18',
-    # only use if you hate security (like i did in the first versions lol)
     # system will pull from environment variables FIRST if it's set there.
     # openai_api_key: YOUR_OPENAI_API_KEY_HERE
     'poll_interval_seconds': 60,
@@ -91,9 +93,10 @@ def is_examples_file_default(examples_path):
     except Exception:
         return True 
 
-def load_config():
+def load_config(config_path=None):
     """
-    Loads the batch grading configuration from config/config.yaml.
+    Loads the batch grading configuration from the specified config YAML file.
+    If config_path is None, loads from config/config.yaml.
     Auto-creates config, prompts, & examples files with defaults if missing.
     Prefers environment variable for API key since that's secure or some shit.
     Returns:
@@ -101,14 +104,23 @@ def load_config():
     Raises RuntimeError if it encounters a badly formatted config file.
     Raises ValueError if it encounters a missing config file.
     """
-    ensure_config_files()
+    if config_path is None:
+        config_path = CONFIG_PATH
+    else:
+        config_path = Path(config_path)
+    if not config_path.exists():
+        raise ValueError(f"Config file not found: {config_path}")
     try:
-        with open(CONFIG_PATH, 'r') as f:
+        with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        raise RuntimeError(f"Incorrectly formatted config.yaml: {e}") from e
-    if not config:
-        raise ValueError("Failed to load config file. How? Very carefully, since if it weren't there it should've been created.")
+        if config is None:
+            config = DEFAULT_CONFIG.copy()
+        else:
+            merged = DEFAULT_CONFIG.copy()
+            merged.update(config)
+            config = merged
+    except Exception as e:
+        raise RuntimeError(f"Error loading config file {config_path}: {e}")
     env_api_key = os.getenv('OPENAI_API_KEY')
     if env_api_key:
         config['openai_api_key'] = env_api_key
