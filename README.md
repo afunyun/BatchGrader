@@ -34,28 +34,48 @@ All configuration is managed via simple YAML.
 1. **Prerequisites:**
    - Python 3.7+
    - recommended:
-   - `astral-uv` (rather than vanilla pip)
-   - else:
-   - `pip`
+     - `astral-uv` (preferred over vanilla pip)
+     - else: `pip`
 
-2. **virtual env, recommended**
-    - git clone the repo
-    - As is tradition, activate a venv just in case you have conflicting packages. I recommend astral-uv, always:
+2. **Virtual Environment (Recommended)**
 
-    ```powershell
-    uv venv batchvenv
-    batchvenv\Scripts\activate
-    ```
+   - Clone the repo:
 
-    - If you don't do this, 3-4 people (random, selected from global population) suddenly lose 3 mm of length from every hair of their body. Don't do that.
+     ```powershell
+     git clone <repo-url>
+     cd <repo-dir>
+     ```
 
-3. **Install Dependencies:**
+   - (Optional but encouraged) Create and activate a virtual environment. I recommend astral-uv:
 
-   ```powershell
-   uv pip install -r requirements.txt
-   ```
+     ```powershell
+     uv venv batchvenv
+     batchvenv\Scripts\activate
+     ```
 
-4. **Configure the System:**
+     If you don't do this, 3-4 people (random, selected from global population) suddenly lose 3 mm of length from every hair of their body. Don't do that.
+
+   - **Dependency Management (uv + requirements.txt is Canonical)**
+
+     This project uses `requirements.txt` as the canonical source of dependencies, managed via [uv](https://github.com/astral-sh/uv) (or pip).
+
+     - `requirements.txt` is authoritative. All dependency changes should be made here.
+     - `pyproject.toml` and `poetry.lock` exist for compatibility (e.g., GitHub dependency insights) but are NOT maintained as canonical.
+
+     **Installing dependencies:**
+
+     ```powershell
+     uv pip install -r requirements.txt
+     ```
+
+     **Adding/updating dependencies:**
+
+     ```powershell
+     uv pip install <package>
+     uv pip freeze > requirements.txt
+     ```
+
+3. **Configure the System:**
    - Edit `config/config.yaml` to set your OpenAI API key and other parameters (see below).
    - Edit `config/prompts.yaml` to customize the evaluation prompt if needed.
 
@@ -120,7 +140,7 @@ Edit this prompt to match your evaluation criteria. The prompt should instruct t
 
 2. **Run the Batch Grader:**
 
-   ```bash
+   ```powershell
    cd src
    python batch_runner.py
    ```
