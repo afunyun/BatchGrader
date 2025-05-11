@@ -22,11 +22,8 @@ All configuration is managed via simple YAML.
   Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
   (Probably already works tbh, just wary of saying you can do this without actually trying it.)
 
-- **Improve tiktoken handling:**  
-  Convert the tiktoken dependency check into a config option, or relocate it to the main execution loop.  
-
-- **Support multiple batches/request splitting:**
-  For batch requests >50k tokens, split the files into multiple .jsonl requests and track/handle all requests.
+- **Support multiple batches:**
+  Optionally submit multiple batches of n token count simultaneously, if desired.
 
 ---
 
@@ -137,6 +134,33 @@ Edit this prompt to match your evaluation criteria. The prompt should instruct t
 
 ## Usage
 
+### Command-Line Usage
+
+**05/11/2025 - added the following options for command line arguments, if you wish to count/split inputs before actually submitting them to API:**
+
+```powershell
+# Count tokens in all input files
+python batch_runner.py --count-tokens
+
+# Split input files into parts not exceeding the configured token limit
+python batch_runner.py --split-tokens
+
+# Only process a specific file
+python batch_runner.py --count-tokens --file myfile.csv
+python batch_runner.py --split-tokens --file myfile.csv
+
+# Default batch processing (no arguments)
+python batch_runner.py
+```
+
+- `--count-tokens`: Prints total, average, and max token counts per file (uses your prompt template and tiktoken).
+- `--split-tokens`: Splits input files into chunks that do not exceed the configured token limit, outputting `{filename}_part1.csv`, `{filename}_part2.csv`, etc.
+- `--file <filename>`: Restrict operation to a specific file in the input directory.
+
+If neither `--count-tokens` nor `--split-tokens` is specified, the system runs the standard batch evaluation workflow.
+
+---
+
 1. **Prepare Input Data:**
    - Place your input files (CSV, JSON, or JSONL) in the `input/` directory.
    - Ensure your files contain the field specified by `response_field` in `config.yaml`.
@@ -155,21 +179,25 @@ Edit this prompt to match your evaluation criteria. The prompt should instruct t
    - Output files will have the same format as input, with an added `llm_score` column containing the evaluation result.
    - Errors or partial results will be saved with an `ERROR_` prefix in the output directory.
 
-```markdown
-    Rate limits
-    -----------
+## Rate Limits
 
-    Batch API rate limits are separate from existing per-model rate limits. The Batch API has two new types of rate limits:
+```html
+Batch API rate limits are separate from existing per-model rate limits. The Batch API has two new types of rate limits:
 
-    1.  **Per-batch limits:** A single batch may include up to 50,000 requests, and a batch input file can be up to 200 MB in size. Note that `/v1/embeddings` batches are also restricted to a maximum of 50,000 embedding inputs across all requests in the batch.
-    2.  **Enqueued prompt tokens per model:** Each model has a maximum number of enqueued prompt tokens allowed for batch processing.
+1. **Per-batch limits:** A single batch may include up to 50,000 requests, and a batch input file can be up to 200 MB in size. Note that `/v1/embeddings` batches are also restricted to a maximum of 50,000 embedding inputs across all requests in the batch.
+2. **Enqueued prompt tokens per model:** Each model has a maximum number of enqueued prompt tokens allowed for batch processing.
 
-    There are no limits for output tokens or number of submitted requests for the Batch API today. Because Batch API rate limits are a new, separate pool, using the Batch API will not consume tokens from your standard per-model rate limits, thereby offering you a convenient way to increase the number of requests and processed tokens you can use when querying our API.
+There are no limits for output tokens or number of submitted requests for the Batch API today. Because Batch API rate limits are a new, separate pool, using the Batch API will not consume tokens from your standard per-model rate limits, thereby offering you a convenient way to increase the number of requests and processed tokens you can use when querying our API.
+
 ```
 
 **OpenAI themselves limit the amount of requests per batch. See above if you're wondering why there's a 50k/request cap.**
 
-**Tier 1 is 2,000,000 TPD. This is the default setting. Your limit may be higher or lower. You can find that information here: <https://platform.openai.com/settings/organization/limits>. If you so choose, you can increase/decrease this via the config.yaml:**
+Beyond this, each API account will have a total daily/enqueued token limit (it is unclear whether or not it's just simulataneously enqueued, or actually per 24 hours. It's referenced both ways in their docs.)
+
+**Tier 1 is 2,000,000 TPD. This is the default setting.**
+
+Your limit may be higher or lower. You can find that information here: <https://platform.openai.com/settings/organization/limits>. If you so choose, you can increase/decrease this via the config.yaml:
 
 ```yaml
 token_limit: 2_000_000 #change to whatever your limit is
@@ -227,24 +255,36 @@ token_limit: 2_000_000 #change to whatever your limit is
 
 ## Directory & Execution Structure
 
-```file
+## Directory Structure
+
+```markdown
 BatchGrader/
 ├── config/
-│   ├── config.yaml         # All runtime configuration (YAML)
-│   └── prompts.yaml        # Prompt templates (YAML)
+│   ├── config.yaml
+│   └── prompts.yaml
+├── docs/
+│   ├── pricing.csv
+│   └── scratchpad.md
 ├── examples/
-│   ├── examples.txt        # If evaluating with criteria that require the LLM to see examples of a correct response, place here.
-├── input/                  # Place your input data files here
-├── output/                 # Processed files with scores will be saved here
+│   └── examples.txt
+├── input/
+│   └── ... (your input files)
+├── output/
+│   └── ... (results, token_usage_log.json)
 ├── src/
-│   ├── batch_runner.py     # Main batch processing script
-│   ├── llm_client.py       # Modular LLM/batch API client
-│   ├── data_loader.py      # Data loading/saving utilities
-│   ├── evaluator.py        # Prompt loading utilities
-│   ├── config_loader.py    # YAML config loader
-│   └── cost_estimator.py   # Cost estimation for batch jobs
-├── README.md               # This file
-└── .gitignore
+│   ├── batch_runner.py         # Main entry point & CLI
+│   ├── config_loader.py        # Loads config & defaults
+│   ├── cost_estimator.py       # Cost estimation logic
+│   ├── data_loader.py          # Reads/writes CSV/JSON/JSONL
+│   ├── evaluator.py            # Prompt template mgmt
+│   ├── input_splitter.py       # Utility for input splitting by token limit
+│   ├── llm_client.py           # OpenAI Batch API client
+│   ├── token_tracker.py        # Tracks API token usage
+│   └── __pycache__/
+├── requirements.txt
+├── pyproject.toml
+├── README.md
+└── ...
 ```
 
-## Last updated: 2025-05-10 (added cost_estimator.py)
+## Last updated: 2025-05-11 (added token counting, input splitting, previous submission logging.)

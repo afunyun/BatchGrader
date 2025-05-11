@@ -1,6 +1,7 @@
 import os
 import uuid
 import datetime
+import argparse
 
 from pathlib import Path
 from data_loader import load_data, save_data
@@ -9,6 +10,7 @@ from config_loader import load_config, CONFIG_DIR, is_examples_file_default
 from llm_client import LLMClient
 from cost_estimator import CostEstimator
 from token_tracker import update_token_log, get_token_usage_for_day
+from input_splitter import split_file_by_token_limit
 
 config = load_config()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -27,7 +29,7 @@ def process_file(filepath):
     Processes a single input file using the OpenAI Batch API workflow via LLMClient.
     Loads data, prepares batch requests, manages the batch job, processes results, and saves output.
     Handles errors and logs appropriately.
-    Enforces a 2,000,000 token cap per batch, halts and warns if exceeded, and logs daily submitted tokens per API key (censored) in output/token_usage_log.json.
+    Enforces configured token limit per batch, halts and warns if exceeded, and logs daily submitted tokens per API key (censored) in output/token_usage_log.json.
 
     Args:
         filepath (str): Path to the input file to process.
@@ -193,9 +195,16 @@ def process_file(filepath):
             print(f"Rare double fail, exception in processing and then exception to save error state for {filepath}: {save_err}... it's over.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
+    parser.add_argument('--count-tokens', action='store_true', help='Count tokens in input file(s) and print stats.')
+    parser.add_argument('--split-tokens', action='store_true', help='Split input file(s) into parts not exceeding the configured token limit.')
+    parser.add_argument('--file', type=str, default=None, help='Only process the specified file in the input directory.')
+    args = parser.parse_args()
+
     llm_client = LLMClient()
     if not llm_client.api_key:
         print("Error: OPENAI_API_KEY not set in config/config.yaml.")
+        exit(1)
     else:
         tokens_today = get_token_usage_for_day(llm_client.api_key)
         print("\n================= API USAGE =================")
@@ -203,17 +212,78 @@ if __name__ == "__main__":
         print(f"TOKEN LIMIT: {TOKEN_LIMIT}")
         print(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
         print("=============================================\n")
-    print("Starting batch processing...")
+
     print(f"Valid INPUT_DIR: {INPUT_DIR}")
     print(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
-    if not llm_client.api_key:
-        print("Error: OPENAI_API_KEY not set in config/config.yaml.")
+
+    files_found = []
+    if args.file:
+        if not os.path.exists(os.path.join(INPUT_DIR, args.file)):
+            print(f"File {args.file} not found in {INPUT_DIR}.")
+            exit(1)
+        files_found = [args.file]
     else:
         files_found = [file_to_process for file_to_process in os.listdir(INPUT_DIR)
                     if file_to_process.endswith((".csv", ".json", ".jsonl"))]
-        if not files_found:
-            print(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl)")
-        for file_to_process in files_found:
-            full_filepath = os.path.join(INPUT_DIR, file_to_process)
-            process_file(full_filepath)
-        print("Batch finished processing.")
+    if not files_found:
+        print(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats I'm both worried and impressed, please reformat.)")
+        exit(0)
+
+    # Use token counting logic from process_file (tiktoken required)
+    def get_token_counter(system_prompt_content, response_field, enc):
+        def count_submitted_tokens(row):
+            sys_tokens = len(enc.encode(system_prompt_content))
+            user_prompt = f"Please evaluate the following text: {str(row[response_field])}"
+            user_tokens = len(enc.encode(user_prompt))
+            return sys_tokens + user_tokens
+        return count_submitted_tokens
+
+    for file_to_process in files_found:
+        full_filepath = os.path.join(INPUT_DIR, file_to_process)
+        print(f"\nProcessing file: {full_filepath}")
+        df = load_data(full_filepath)
+        
+        examples_dir = config.get('examples_dir')
+        if not examples_dir:
+            raise ValueError("'examples_dir' not found in config.yaml.")
+        project_root = CONFIG_DIR.parent
+        abs_examples_path = (project_root / examples_dir).resolve()
+        if is_examples_file_default(abs_examples_path):
+            system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
+        else:
+            with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
+                example_lines = [line.strip() for line in ex_f if line.strip()]
+            if not example_lines:
+                raise ValueError(f"No examples found in {abs_examples_path}.")
+            formatted_examples = '\n'.join(f"- {ex}" for ex in example_lines)
+            system_prompt_template = load_prompt_template("batch_evaluation_prompt")
+            if '{dynamic_examples}' not in system_prompt_template:
+                raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
+            system_prompt_content = system_prompt_template.format(dynamic_examples=formatted_examples)
+        try:
+            import tiktoken
+            enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
+        except Exception:
+            print("[WARN] tiktoken not available, cannot count tokens accurately.")
+            enc = None
+        if args.count_tokens or args.split_tokens:
+            if enc is None:
+                print("[ERROR] tiktoken is required for token counting/splitting. Please install it.")
+                exit(1)
+            token_counter = get_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
+            token_counts = df.apply(token_counter, axis=1)
+            total_tokens = token_counts.sum()
+            avg_tokens = token_counts.mean()
+            max_tokens = token_counts.max()
+            print(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+            if args.split_tokens:
+                if total_tokens <= TOKEN_LIMIT:
+                    print(f"File {file_to_process} does not exceed the token limit. No split needed.")
+                else:
+                    print(f"Splitting {file_to_process} into chunks not exceeding {TOKEN_LIMIT} tokens...")
+                    output_files = split_file_by_token_limit(full_filepath, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
+                    print(f"Split complete. Output files: {output_files}")
+            continue
+        
+        process_file(full_filepath)
+    print("Batch finished processing.")
