@@ -30,7 +30,8 @@ def process_file(filepath):
     Loads data, prepares batch requests, manages the batch job, processes results, and saves output.
     Handles errors and logs appropriately.
     Enforces configured token limit per batch, halts and warns if exceeded, and logs daily submitted tokens per API key (censored) in output/token_usage_log.json.
-
+    Returns:
+        True if successful, False if any error or batch job failure.
     Args:
         filepath (str): Path to the input file to process.
     """
@@ -115,7 +116,7 @@ def process_file(filepath):
                     update_token_log(llm_client.api_key, 0)
                 except Exception as e:
                     print(f"[WARN] Could not log token usage: {e}")
-                return
+                return False
             try:
                 llm_client = LLMClient()
                 update_token_log(llm_client.api_key, int(total_tokens))
@@ -126,7 +127,7 @@ def process_file(filepath):
 
         if df.empty:
             print(f"No data loaded from {filepath}. Skipping.")
-            return
+            return False
 
         MAX_BATCH_SIZE = 50000
         if len(df) > MAX_BATCH_SIZE:
@@ -134,15 +135,23 @@ def process_file(filepath):
             df = df.iloc[:MAX_BATCH_SIZE].copy() ##TODO - split into multiple batches and monitor all.
 
         llm_client = LLMClient()
-        df_with_results = llm_client.run_batch_job(
-            df, system_prompt_content, response_field_name=RESPONSE_FIELD, base_filename_for_tagging=filename
-        )
+        try:
+            df_with_results = llm_client.run_batch_job(
+                df, system_prompt_content, response_field_name=RESPONSE_FIELD, base_filename_for_tagging=filename
+            )
+        except Exception as batch_exc:
+            print(f"[ERROR] Batch job failed for {filepath}: {batch_exc}")
+            return False
         save_data(df_with_results.drop(columns=['custom_id'], errors='ignore'), output_path)
         print(f"Processed {filepath}. Results saved to {output_path}")
         print(f"Total rows successfully processed: {len(df_with_results)}")
         error_rows = df_with_results['llm_score'].str.contains('Error', case=False)
         if error_rows.any():
             print(f"Total rows with errors: {error_rows.sum()}")
+            # If ALL rows have errors, treat as batch failure and halt further processing
+            if error_rows.sum() == len(df_with_results):
+                print(f"[BATCH FAILURE] All rows failed for {filepath}. Halting further processing.")
+                return False
         
         try:
             input_col_name = 'input_tokens'
@@ -163,7 +172,6 @@ def process_file(filepath):
         except Exception as cost_exception:
             print(f"[Cost Estimation Error] {cost_exception}")
 
-
     except Exception as e:
         print(f"An error occurred while processing {filepath}: {e}")
         log_basename = os.path.splitext(filename)[0] + ".log"
@@ -182,6 +190,9 @@ def process_file(filepath):
             print(f"Logged error to {log_path}")
         except Exception as save_err:
             print(f"Double fail: exception in processing and then in saving error log for {filepath}: {save_err} ... aborting.")
+        return False
+
+    return True
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
@@ -256,54 +267,70 @@ if __name__ == "__main__":
             return sys_tokens + user_tokens
         return count_submitted_tokens
 
+    # ---
+    # If any file fails during batch processing, halt further processing immediately.
+    # This prevents submitting further batches if one fails (2025-05-11).
+    # ---
     for resolved_path, df in files_found:
-        print(f"\nProcessing file: {resolved_path}")
-        
-        examples_dir = config.get('examples_dir')
-        if not examples_dir:
-            raise ValueError("'examples_dir' not found in config.yaml.")
-        project_root = CONFIG_DIR.parent
-        abs_examples_path = (project_root / examples_dir).resolve()
-        if is_examples_file_default(abs_examples_path):
-            system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
-        else:
-            with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
-                example_lines = [line.strip() for line in ex_f if line.strip()]
-            if not example_lines:
-                raise ValueError(f"No examples found in {abs_examples_path}.")
-            formatted_examples = '\n'.join(f"- {ex}" for ex in example_lines)
-            system_prompt_template = load_prompt_template("batch_evaluation_prompt")
-            if '{dynamic_examples}' not in system_prompt_template:
-                raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
-            system_prompt_content = system_prompt_template.format(dynamic_examples=formatted_examples)
         try:
-            import tiktoken
-            enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
-        except Exception:
-            print("[WARN] tiktoken not available, cannot count tokens accurately.")
-            enc = None
-        if args.count_tokens or args.split_tokens:
-            if enc is None:
-                print("[ERROR] tiktoken is required for token counting/splitting. Please install it.")
-                exit(1)
-            token_counter = get_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
-            token_counts = df.apply(token_counter, axis=1)
-            total_tokens = token_counts.sum()
-            avg_tokens = token_counts.mean()
-            max_tokens = token_counts.max()
-            print(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
-            if args.split_tokens:
-                # ---
-                # Fix: Use os.path.basename(resolved_path) for display, resolved_path for file operations
-                # ---
-                display_name = os.path.basename(resolved_path)
-                if total_tokens <= TOKEN_LIMIT:
-                    print(f"File {display_name} does not exceed the token limit. No split needed.")
-                else:
-                    print(f"Splitting {display_name} into chunks not exceeding {TOKEN_LIMIT} tokens...")
-                    output_files = split_file_by_token_limit(resolved_path, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
-                    print(f"Split complete. Output files: {output_files}")
-            continue
-        
-        process_file(resolved_path)
+            print(f"\nProcessing file: {resolved_path}")
+            
+            examples_dir = config.get('examples_dir')
+            if not examples_dir:
+                raise ValueError("'examples_dir' not found in config.yaml.")
+            project_root = CONFIG_DIR.parent
+            abs_examples_path = (project_root / examples_dir).resolve()
+            if is_examples_file_default(abs_examples_path):
+                system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
+            else:
+                with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
+                    example_lines = [line.strip() for line in ex_f if line.strip()]
+                if not example_lines:
+                    raise ValueError(f"No examples found in {abs_examples_path}.")
+                formatted_examples = '\n'.join(f"- {ex}" for ex in example_lines)
+                system_prompt_template = load_prompt_template("batch_evaluation_prompt")
+                if '{dynamic_examples}' not in system_prompt_template:
+                    raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
+                system_prompt_content = system_prompt_template.format(dynamic_examples=formatted_examples)
+
+            # Tokenizer
+            try:
+                import tiktoken
+                enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
+            except Exception:
+                print("[WARN] tiktoken not available, cannot count tokens accurately.")
+                enc = None
+
+            if args.count_tokens or args.split_tokens:
+                if enc is None:
+                    print("[ERROR] tiktoken is required for token counting/splitting. Please install it.")
+                    exit(1)
+                token_counter = get_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
+                token_counts = df.apply(token_counter, axis=1)
+                total_tokens = token_counts.sum()
+                avg_tokens = token_counts.mean()
+                max_tokens = token_counts.max()
+                print(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+                if args.split_tokens:
+                    # ---
+                    # Fix: Use os.path.basename(resolved_path) for display, resolved_path for file operations
+                    # ---
+                    display_name = os.path.basename(resolved_path)
+                    if total_tokens <= TOKEN_LIMIT:
+                        print(f"File {display_name} does not exceed the token limit. No split needed.")
+                    else:
+                        print(f"Splitting {display_name} into chunks not exceeding {TOKEN_LIMIT} tokens...")
+                        output_files = split_file_by_token_limit(resolved_path, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
+                        print(f"Split complete. Output files: {output_files}")
+                continue
+
+            # Call process_file and halt further processing if it returns False
+            ok = process_file(resolved_path)
+            if not ok:
+                print(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")
+                break
+        except Exception as e:
+            print(f"[BATCH HALTED] Error processing {resolved_path}: {e}")
+            print("Halting further batch processing due to failure.")
+            break
     print("Batch finished processing.")

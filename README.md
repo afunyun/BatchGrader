@@ -2,6 +2,7 @@
 
 ## Last updated: 2025-05-11
 
+Version: 0.2.2 - Fix multiple input files continuing to run/submit jobs if a reply comes back with errors. (preliminary fix not fully tested)
 Version: 0.2.1 - fixed cli args which i managed to put in horribly broken, nice, unified loading logic as well for args
 
 ## Overview
@@ -23,7 +24,9 @@ All configuration is managed via simple YAML.
 ### 🚧 Current TODO / Action Items
 
 **URGENT:**
+
 - Fix multiple input files continuing to run/submit jobs if a reply comes back with errors.
+-- preliminary fix in, let me know if it fails
 
 - **Support richer evaluation outputs:**  
   Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
