@@ -1,7 +1,7 @@
 # Local virtual environment
 batchvenv/
 
-# Potentially Sensitive shit
+# Potentially Sensitive
 config/config.yaml
 config/prompts.yaml
 examples/*.txt
@@ -11,6 +11,7 @@ input/*.jsonl
 output/*.csv
 output/*.json
 output/*.jsonl
+output/*.log
 docs/scratchpad.md 
 
 # temp files

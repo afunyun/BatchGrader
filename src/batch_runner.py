@@ -9,7 +9,7 @@ from evaluator import load_prompt_template
 from config_loader import load_config, CONFIG_DIR, is_examples_file_default
 from llm_client import LLMClient
 from cost_estimator import CostEstimator
-from token_tracker import update_token_log, get_token_usage_for_day
+from token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary
 from input_splitter import split_file_by_token_limit
 
 config = load_config()
@@ -79,7 +79,11 @@ def process_file(filepath):
             import tiktoken
             enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
         except Exception:
-            raise RuntimeError("#~# you need tiktoken or half of the functionality explodes my guy, rerun uv pip install -r requirements.txt #~#")
+            print("\n\n############################")
+            print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+            print("RERUN: uv pip install -r requirements.txt")
+            print("############################\n\n")
+            raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
 
         def count_input_tokens_per_row(row, system_prompt_content, response_field, enc):
             sys_tokens = len(enc.encode(system_prompt_content))
@@ -150,7 +154,11 @@ def process_file(filepath):
             input_col_name = 'input_tokens'
             output_col_name = 'output_tokens'
             if enc is None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
-                raise RuntimeError("#~# you need tiktoken or half of the functionality explodes my guy, rerun uv pip install -r requirements.txt #~#")
+                print("\n\n############################")
+                print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+                print("RERUN: uv pip install -r requirements.txt")
+                print("############################\n\n")
+                raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
             if enc is not None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
                 df_with_results[input_col_name] = df_with_results.apply(lambda row: count_input_tokens_per_row(row, system_prompt_content, RESPONSE_FIELD, enc), axis=1)
                 df_with_results[output_col_name] = df_with_results.apply(lambda row: count_completion_tokens(row, enc), axis=1)
@@ -195,12 +203,48 @@ def get_request_mode(args):
         return "Split/Count (NO REQUESTS MADE)"
     return "API Request/Batch"
 
+def print_token_cost_stats():
+    """
+    Prints token/cost usage stats (all time, today, per-model breakdown) using token_tracker utilities.
+    """
+    from datetime import datetime
+    today = datetime.now().strftime('%Y-%m-%d')
+    print("\n================= TOKEN USAGE & COST STATS =================")
+    print("ALL TIME:")
+    summary_all = get_token_usage_summary()
+    print_token_cost_summary(summary_all)
+    print("\nTODAY:")
+    summary_today = get_token_usage_summary(start_date=today, end_date=today)
+    print_token_cost_summary(summary_today)
+    print("===========================================================\n")
+
+def print_token_cost_summary(summary):
+    total_tokens = summary.get('total_tokens', 0)
+    total_cost = summary.get('total_cost', 0.0)
+    breakdown = summary.get('breakdown', {})
+    print(f"  Total tokens: {total_tokens:,}")
+    print(f"  Total cost: ${total_cost:,.6f}")
+    if breakdown:
+        print("  Per-model breakdown:")
+        print("    Model           | Tokens      | Cost      | Count")
+        print("    --------------- | ----------- | --------- | -----")
+        for model, stats in breakdown.items():
+            tokens = stats.get('tokens', 0)
+            cost = stats.get('cost', 0.0)
+            count = stats.get('count', 0)
+            print(f"    {model:<15} | {tokens:>11,} | ${cost:>8,.4f} | {count:>5}")
+
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
     parser.add_argument('--count-tokens', action='store_true', help='Count tokens in input file(s) and print stats.')
     parser.add_argument('--split-tokens', action='store_true', help='Split input file(s) into parts not exceeding the configured token limit.')
     parser.add_argument('--file', type=str, default=None, help='Only process the specified file in the input directory.')
+    parser.add_argument('--costs', action='store_true', help='Show token/cost usage stats and exit.')
+    parser.add_argument('--statistics', action='store_true', help='Show API usage stats even in count/split modes.')
     args = parser.parse_args()
+    # Determine if stats should be shown (real run or when --statistics)
+    show_stats = args.statistics or (not args.count_tokens and not args.split_tokens)
 
     llm_client = LLMClient()
     if not llm_client.api_key:
@@ -208,13 +252,18 @@ if __name__ == "__main__":
         exit(1)
     else:
         tokens_today = get_token_usage_for_day(llm_client.api_key)
-        print("\n================= API USAGE =================")
-        print(f"TOTAL TOKENS SUBMITTED TODAY: {tokens_today:,}")
-        print(f"TOKEN LIMIT: {TOKEN_LIMIT}")
-        print(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
-        print(f"SPLIT TOKEN LIMIT: {split_token_limit}")
-        print(f"System is running in {get_request_mode(args)} mode.")
-        print("=============================================\n")
+        if show_stats:
+            print("\n================= API USAGE =================")
+            print(f"TOTAL TOKENS SUBMITTED TODAY: {tokens_today:,}")
+            print(f"TOKEN LIMIT: {TOKEN_LIMIT}")
+            print(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
+            print(f"SPLIT TOKEN LIMIT: {split_token_limit}")
+            print(f"System is running in {get_request_mode(args)} mode.")
+            print("==============================================\n")
+
+    if getattr(args, 'costs', False):
+        print_token_cost_stats()
+        exit(0)
 
     print(f"Valid INPUT_DIR: {INPUT_DIR}")
     print(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
@@ -252,7 +301,7 @@ if __name__ == "__main__":
                 resolved_path, df = resolve_and_load_input_file(file_to_process)
                 files_found.append((resolved_path, df))
     if not files_found:
-        print(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats I'm both worried and impressed, please reformat.)")
+        print(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats please reformat.)")
         exit(0)
 
     def get_token_counter(system_prompt_content, response_field, enc):
@@ -263,7 +312,6 @@ if __name__ == "__main__":
             return sys_tokens + user_tokens
         return count_submitted_tokens
 
-    # This prevents submitting further batches if one fails (2025-05-11). Halts immediately. RIP my poor API credits.
     for resolved_path, df in files_found:
         try:
             print(f"\nProcessing file: {resolved_path}")
@@ -290,12 +338,19 @@ if __name__ == "__main__":
                 import tiktoken
                 enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
             except Exception:
-                print("[WARN] tiktoken not available, cannot count tokens accurately.")
-                enc = None
+                print("\n\n############################")
+                print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+                print("RERUN: uv pip install -r requirements.txt")
+                print("############################\n\n")
+                raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
 
             if args.count_tokens or args.split_tokens:
                 if enc is None:
-                    raise RuntimeError("#~# you need tiktoken or half of the functionality explodes my guy, rerun uv pip install -r requirements.txt #~#")
+                    print("\n\n############################")
+                    print("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
+                    print("RERUN: uv pip install -r requirements.txt")
+                    print("############################\n\n")
+                    raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
                 token_counter = get_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
                 token_counts = df.apply(token_counter, axis=1)
                 total_tokens = token_counts.sum()
@@ -313,7 +368,7 @@ if __name__ == "__main__":
                         for out_file, tok_count in zip(output_files, token_counts):
                             print(f"Output file: {out_file} | Tokens: {tok_count}")
                 continue
-
+            # Fastest fix I ever done did (2025-05-11). This prevents submitting further batches if one fails. Halts immediately. RIP my poor API credits.
             ok = process_file(resolved_path)
             if not ok:
                 print(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")
@@ -323,3 +378,6 @@ if __name__ == "__main__":
             print("Halting further batch processing due to failure.")
             break
     print("Batch finished processing.")
+    # Final stats only when requested
+    if show_stats:
+        print_token_cost_stats()
