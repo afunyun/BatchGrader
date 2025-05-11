@@ -18,6 +18,7 @@ INPUT_DIR = str(PROJECT_ROOT / config['input_dir'])
 OUTPUT_DIR = str(PROJECT_ROOT / config['output_dir'])
 RESPONSE_FIELD = config['response_field']
 TOKEN_LIMIT = config.get('token_limit', 2_000_000)
+split_token_limit = config.get('split_token_limit', 500_000)
 
 model_name = config['openai_model_name']
 
@@ -78,52 +79,45 @@ def process_file(filepath):
             import tiktoken
             enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
         except Exception:
-            print("[WARN] tiktoken not available, cannot count tokens accurately.")
-            enc = None
+            raise RuntimeError("#~# you need tiktoken or half of the functionality explodes my guy, rerun uv pip install -r requirements.txt #~#")
 
         def count_input_tokens_per_row(row, system_prompt_content, response_field, enc):
-            if enc is None:
-                return 0
             sys_tokens = len(enc.encode(system_prompt_content))
             user_prompt = f"Please evaluate the following text: {str(row[response_field])}"
             user_tokens = len(enc.encode(user_prompt))
             return sys_tokens + user_tokens
 
         def count_completion_tokens(row, enc):
-            if enc is None:
-                return 0
             completion = row.get('llm_score', '')
             return len(enc.encode(str(completion)))
 
-        if enc is not None:
-            def count_submitted_tokens(row):
-                sys_tokens = len(enc.encode(system_prompt_content))
-                user_prompt = f"Please evaluate the following text: {str(row[RESPONSE_FIELD])}"
-                user_tokens = len(enc.encode(user_prompt))
-                return sys_tokens + user_tokens
-            token_counts = df.apply(count_submitted_tokens, axis=1)
-            total_tokens = token_counts.sum()
-            avg_tokens = token_counts.mean()
-            max_tokens = token_counts.max()
-            print(f"[SUBMITTED TOKENS] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+        def count_submitted_tokens(row):
+            sys_tokens = len(enc.encode(system_prompt_content))
+            user_prompt = f"Please evaluate the following text: {str(row[RESPONSE_FIELD])}"
+            user_tokens = len(enc.encode(user_prompt))
+            return sys_tokens + user_tokens
+        
+        token_counts = df.apply(count_submitted_tokens, axis=1)
+        total_tokens = token_counts.sum()
+        avg_tokens = token_counts.mean()
+        max_tokens = token_counts.max()
+        print(f"[SUBMITTED TOKENS] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
 
-            if total_tokens > TOKEN_LIMIT:
-                print(f"[ERROR] Total submitted tokens ({total_tokens}) exceeds the allowed cap of {TOKEN_LIMIT} for a single batch.")
-                print("Please reduce your batch size or check your usage at https://platform.openai.com/usage.")
-                print("Batch submission halted. No API calls were made.")
-                try:
-                    llm_client = LLMClient()
-                    update_token_log(llm_client.api_key, 0)
-                except Exception as e:
-                    print(f"[WARN] Could not log token usage: {e}")
-                return False
+        if total_tokens > TOKEN_LIMIT:
+            print(f"[ERROR] Total submitted tokens ({total_tokens}) exceeds the allowed cap of {TOKEN_LIMIT} for a single batch.")
+            print("Please reduce your batch size or check your usage at https://platform.openai.com/usage.")
+            print("Batch submission halted. No API calls were made.")
             try:
                 llm_client = LLMClient()
-                update_token_log(llm_client.api_key, int(total_tokens))
+                update_token_log(llm_client.api_key, 0)
             except Exception as e:
                 print(f"[WARN] Could not log token usage: {e}")
-        else:
-            print("[WARN] Token counting skipped (tiktoken unavailable or model unknown).")
+            return False
+        try:
+            llm_client = LLMClient()
+            update_token_log(llm_client.api_key, int(total_tokens))
+        except Exception as e:
+            print(f"[WARN] Could not log token usage: {e}")
 
         if df.empty:
             print(f"No data loaded from {filepath}. Skipping.")
@@ -157,7 +151,7 @@ def process_file(filepath):
             input_col_name = 'input_tokens'
             output_col_name = 'output_tokens'
             if enc is None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
-                raise RuntimeError("tiktoken is required for cost estimation but is not installed.")
+                raise RuntimeError("#~# you need tiktoken or half of the functionality explodes my guy, rerun uv pip install -r requirements.txt #~#")
             if enc is not None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
                 df_with_results[input_col_name] = df_with_results.apply(lambda row: count_input_tokens_per_row(row, system_prompt_content, RESPONSE_FIELD, enc), axis=1)
                 df_with_results[output_col_name] = df_with_results.apply(lambda row: count_completion_tokens(row, enc), axis=1)
@@ -194,6 +188,14 @@ def process_file(filepath):
 
     return True
 
+def get_request_mode(args):
+    """
+    Indicates in the CLI whether or not requests are being submitted or we're in a safe count/split mode.
+    """
+    if getattr(args, 'count_tokens', False) or getattr(args, 'split_tokens', False):
+        return "Split/Count (NO REQUESTS MADE)"
+    return "API Request/Batch"
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
     parser.add_argument('--count-tokens', action='store_true', help='Count tokens in input file(s) and print stats.')
@@ -211,18 +213,13 @@ if __name__ == "__main__":
         print(f"TOTAL TOKENS SUBMITTED TODAY: {tokens_today:,}")
         print(f"TOKEN LIMIT: {TOKEN_LIMIT}")
         print(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
+        print(f"SPLIT TOKEN LIMIT: {split_token_limit}")
+        print(f"System is running in {get_request_mode(args)} mode.")
         print("=============================================\n")
 
     print(f"Valid INPUT_DIR: {INPUT_DIR}")
     print(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
 
-    # ---
-    # Shared file path resolution and data loading logic for CLI file operations (2025-05-11)
-    # - If path is absolute, use as-is.
-    # - If path has a directory, resolve relative to PROJECT_ROOT.
-    # - If just a filename, resolve as INPUT_DIR/filename.
-    # Returns (resolved_path, df)
-    # ---
     from pathlib import Path
     def resolve_and_load_input_file(file_arg):
         """
@@ -267,10 +264,7 @@ if __name__ == "__main__":
             return sys_tokens + user_tokens
         return count_submitted_tokens
 
-    # ---
-    # If any file fails during batch processing, halt further processing immediately.
-    # This prevents submitting further batches if one fails (2025-05-11).
-    # ---
+    # This prevents submitting further batches if one fails (2025-05-11). Halts immediately. RIP my poor API credits.
     for resolved_path, df in files_found:
         try:
             print(f"\nProcessing file: {resolved_path}")
@@ -303,8 +297,7 @@ if __name__ == "__main__":
 
             if args.count_tokens or args.split_tokens:
                 if enc is None:
-                    print("[ERROR] tiktoken is required for token counting/splitting. Please install it.")
-                    exit(1)
+                    raise RuntimeError("#~# you need tiktoken or half of the functionality explodes my guy, rerun uv pip install -r requirements.txt #~#")
                 token_counter = get_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
                 token_counts = df.apply(token_counter, axis=1)
                 total_tokens = token_counts.sum()
@@ -312,16 +305,15 @@ if __name__ == "__main__":
                 max_tokens = token_counts.max()
                 print(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
                 if args.split_tokens:
-                    # ---
-                    # Fix: Use os.path.basename(resolved_path) for display, resolved_path for file operations
-                    # ---
                     display_name = os.path.basename(resolved_path)
                     if total_tokens <= TOKEN_LIMIT:
                         print(f"File {display_name} does not exceed the token limit. No split needed.")
                     else:
-                        print(f"Splitting {display_name} into chunks not exceeding {TOKEN_LIMIT} tokens...")
-                        output_files = split_file_by_token_limit(resolved_path, TOKEN_LIMIT, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
+                        print(f"Splitting {display_name} into chunks not exceeding {split_token_limit} tokens...")
+                        output_files, token_counts = split_file_by_token_limit(resolved_path, split_token_limit, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
                         print(f"Split complete. Output files: {output_files}")
+                        for out_file, tok_count in zip(output_files, token_counts):
+                            print(f"Output file: {out_file} | Tokens: {tok_count}")
                 continue
 
             # Call process_file and halt further processing if it returns False

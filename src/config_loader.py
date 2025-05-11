@@ -18,8 +18,19 @@ DEFAULT_CONFIG = {
     'max_tokens_per_response': 1000,
     'response_field': 'response',
     'batch_api_endpoint': '/v1/chat/completions',
-    'token_limit': 2_000_000
+    'token_limit': 2_000_000,
+    'split_token_limit': 500_000,  # Max tokens per split file (default ~500k)
+    'split_row_limit': None        # Max rows per split file (optional, default: unlimited)
 }
+
+"""
+Event Dictionary (Table 1)
+-------------------------
+| Event Name                | Payload Schema                        | Description                         |
+|-------------------------- |---------------------------------------|-------------------------------------|
+| input_split_config_loaded | {token_limit:int, row_limit:int}      | Emitted when splitter loads config  |
+| file_split                | {input_file:str, output_files:list}   | Emitted when a file is split        |
+"""
 
 DEFAULT_EXAMPLES_TEXT = "This file would contain examples of the target style. If you want it to be used in the prompt, add it to the config.yaml file."
 

@@ -2,6 +2,14 @@
 
 ## Last updated: 2025-05-11
 
+- Version: 0.2.4 - Fixed tiktoken error output to actually raise an exception instead of printing an error to console and then exiting.
+
+                 - Deleted redundant docs images (NOOOOO)
+
+                 - Update console output to provide more information about the current runtime while the batch_runner is running - previously it was fairly hard to see what options were actually running.
+
+                 - Added `split_token_limit` to config.yaml to allow for splitting input files into chunks that do not exceed the configured token limit. CLI and normal operation now respect this limit rather than the Token Limit if it is applicable.
+
 - Version: 0.2.3 - Release fixes - everything seems to ...work... on my machine at least. Testing leaves something to be desired. Also managed to annihilate the branches for a second.
 
 - Version: 0.2.2 - Fix multiple input files continuing to run/submit jobs if a reply comes back with errors. (preliminary fix not fully tested)
@@ -100,6 +108,7 @@ max_tokens_per_response: 1000
 response_field: response
 batch_api_endpoint: /v1/chat/completions
 token_limit: 2000000
+split_token_limit: 500000
 ```
 
 ## Prompt Configuration
@@ -117,8 +126,8 @@ batch_evaluation_prompt_generic: |
     2 - Poor
     1 - Very poor
     Output only the numerical score.
-</pre>
-<pre>
+
+<br>
 batch_evaluation_prompt: |
     You are an evaluator trying to determins the closeness of a response to a given style, examples of which will follow. Given the following examples, evaluate whether or not the response matches the target style.
     Examples:\n{dynamic_examples}\n\n
@@ -291,7 +300,7 @@ token_limit: 2_000_000 #change to whatever your limit is
 
 ## Directory Structure
 
-<pre>
+```text
 BatchGrader/
 ├── config/
 │   ├── config.yaml
@@ -319,6 +328,6 @@ BatchGrader/
 ├── pyproject.toml
 ├── README.md
 └── ...
-</pre>
+```
 
 ![architecture](docs/architecture.png)
