@@ -11,12 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-import pytest
-import sys
-
-if __name__ == "__main__":
-    sys.exit(pytest.main())
+import os
+import glob
+import pandas as pd
 from datetime import datetime
 
 test_cases = [
@@ -51,6 +48,27 @@ test_cases = [
         'expected_output': 'tests/output/chunking_large_concurrency_results.csv',
         'expected_rows': 100,
         'expected_log_msgs': ['Splitting input file'],
+    },
+    {
+        'name': 'Continue on Chunk Failure',
+        'input': 'tests/input/chunk_with_failure.csv',
+        'config': 'tests/test_config_continue_on_failure.yaml',
+        'expected_output': 'tests/output/chunk_with_failure_results.csv', 
+        'expected_rows': 3, 
+        'expected_log_msgs': [
+            "Generated 5 BatchJob objects for chunk_with_failure.csv",
+            "Simulating failure for chunk: chunk_with_failure_chunk_2 due to TEST_KEY_FAIL_CONTINUE",
+            "Chunk chunk_with_failure_chunk_2 failed: Simulated failure for chunk_with_failure_chunk_2",
+            "Simulating failure for chunk: chunk_with_failure_chunk_4 due to TEST_KEY_FAIL_CONTINUE",
+            "Chunk chunk_with_failure_chunk_4 failed: Simulated failure for chunk_with_failure_chunk_4",
+            "Simulating success for chunk: chunk_with_failure_chunk_1 due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)",
+            "Chunk chunk_with_failure_chunk_1 completed successfully.",
+            "Simulating success for chunk: chunk_with_failure_chunk_3 due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)",
+            "Chunk chunk_with_failure_chunk_3 completed successfully.",
+            "Simulating success for chunk: chunk_with_failure_chunk_5 due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)",
+            "Chunk chunk_with_failure_chunk_5 completed successfully.",
+            "BatchGrader run finished successfully for tests/input/chunk_with_failure.csv"
+        ],
     },
 ]
 def get_latest_log():
@@ -164,4 +182,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

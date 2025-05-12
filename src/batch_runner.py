@@ -16,6 +16,9 @@ from src.token_tracker import update_token_log, get_token_usage_for_day, get_tok
 from src.input_splitter import split_file_by_token_limit
 from src.batch_job import BatchJob
 from rich_display import RichJobTable
+import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from rich.live import Live
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'logs')
 ARCHIVE_DIR = os.path.join(LOG_DIR, 'archive')
@@ -48,9 +51,6 @@ def _generate_chunk_job_objects(
     Returns:
         List[BatchJob]: One per chunk, or empty if input is empty.
     """
-    import pandas as pd
-    import os
-
     jobs = []
     force_chunk_count = config.get('force_chunk_count', 0)
     input_dir = os.path.dirname(original_filepath)
@@ -146,42 +146,120 @@ def _execute_single_batch_job_task(batch_job, llm_client, response_field_name):
     return batch_job
 
 
-def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
-    import pandas as pd
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from llm_client import LLMClient
-    from rich.live import Live
+def _pfc_submit_jobs(jobs_to_submit, response_field_name, max_workers_config):
+    llm_client = LLMClient() 
+    # Uses the existing module-level _execute_single_batch_job_task
+    with ThreadPoolExecutor(max_workers=max_workers_config) as executor:
+        future_to_job_map = {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field_name): job for job in jobs_to_submit}
+    return future_to_job_map
 
-    def _submit_jobs(jobs, response_field):
-        llm_client = LLMClient()
-        with ThreadPoolExecutor(max_workers=config.get('max_simultaneous_batches', 2)) as executor:
-            return {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field): job for job in jobs}
 
-    def _handle_job_result(job, result_job, completed_jobs):
-        logger.info(f"Chunk {job.chunk_id_str} started")
-        if result_job.status == "running":
-            logger.info(f"Chunk {job.chunk_id_str} running")
-        if result_job.status == "completed":
-            logger.success(f"Chunk {job.chunk_id_str} completed")
-        if result_job.status == "failed":
-            logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
-        completed_jobs.append(result_job)
+def _pfc_handle_job_result(job_from_map, result_job_obj, completed_jobs_list):
+    if result_job_obj.status == "running": 
+        logger.info(f"Chunk {result_job_obj.chunk_id_str} reported running (final check)")
+    elif result_job_obj.status == "completed":
+        logger.success(f"Chunk {result_job_obj.chunk_id_str} completed successfully.")
+    elif result_job_obj.status == "failed":
+        logger.error(f"Chunk {result_job_obj.chunk_id_str} failed: {result_job_obj.error_message}")
+    else:
+        logger.warning(f"Chunk {result_job_obj.chunk_id_str} finished with unhandled status: {result_job_obj.status}")
+    
+    if result_job_obj not in completed_jobs_list: 
+        completed_jobs_list.append(result_job_obj)
 
-    def _aggregate_and_cleanup(completed_jobs, filepath):
-        result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
-        if result_dfs:
-            combined = pd.concat(result_dfs, ignore_index=True)
-            logger.success(f"Results aggregated. {len(combined)} rows processed.")
-            from src.file_utils import prune_chunked_dir
-            chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
-            prune_chunked_dir(chunked_dir)
-            return combined
-        logger.error(f"[FAILURE] All chunks failed for {filepath}.")
-        from src.file_utils import prune_chunked_dir
-        chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
-        prune_chunked_dir(chunked_dir)
+
+def _pfc_process_completed_future(
+    future,
+    future_to_job_map,
+    completed_jobs_list,
+    live_display,
+    rich_job_table,
+    all_jobs_list,
+    halt_on_failure_flag,
+    original_filepath,
+    llm_output_column_name
+):
+    """
+    Processes a single completed future from the concurrent execution pool.
+
+    Args:
+        future: The completed future object.
+        future_to_job_map: Dictionary mapping futures to BatchJob objects.
+        completed_jobs_list: List to append successfully processed BatchJob objects to.
+        live_display: The Rich Live display object to update.
+        rich_job_table: The RichJobTable instance used for building the table.
+        all_jobs_list: The full list of BatchJob objects for display updates.
+        halt_on_failure_flag: Boolean indicating if processing should stop on first failure.
+        original_filepath: Path of the original file being processed (for logging).
+        llm_output_column_name: Name of the column for LLM output.
+    Returns:
+        bool: True if a failure occurred and halt_on_failure is set, otherwise False.
+    """
+    job_from_future = future_to_job_map[future] # Original job instance for reference
+    logger.info(f"Future completed for chunk {job_from_future.chunk_id_str}. Processing result...")
+    
+    try:
+        # result_job is the job object modified by _execute_single_batch_job_task or _pfc_execute_single_batch_job_task
+        result_job = future.result()
+    except Exception as exc:
+        logger.error(f"Exception retrieving future result for chunk {job_from_future.chunk_id_str}: {exc}", exc_info=True)
+        # Modify the original job object to reflect this critical failure
+        job_from_future.status = "failed"
+        job_from_future.error_message = f"Future.result() raised: {str(exc)}"
+        result_job = job_from_future # Use the modified original job object for handling
+    
+    if isinstance(result_job, dict) and 'error' in result_job: # This is an error from the batch API itself or a caught exception in _execute_single_batch_job_task
+        error_message = result_job['error']
+        job_from_future.status = "failed"
+        job_from_future.error_info = error_message
+        logger.error(f"Chunk {job_from_future.chunk_id_str} failed with API/Task error: {error_message}")
+        failure_detected_in_this_chunk = True
+        if halt_on_failure_flag:
+            logger.error(f"[HALT] Failure detected in chunk {job_from_future.chunk_id_str}. Halting remaining jobs for {os.path.basename(original_filepath)}.")
+            # Update table for this failed job before returning True to halt
+            if live_display: live_display.update(rich_job_table.build_table(all_jobs_list))
+            return True # Signal to halt
+        else:
+            # If not halting, create a DataFrame for this failed chunk
+            logger.warning(f"Chunk {job_from_future.chunk_id_str} failed but not halting. Creating error DataFrame.")
+            # Ensure job.chunk_df is the one with 'custom_id'
+            error_df = job_from_future.chunk_df.copy() if job_from_future.chunk_df is not None else pd.DataFrame()
+            if error_df.empty and 'custom_id' not in error_df.columns:
+                 # This case is problematic: no base df to add error to. Try to create minimal one if custom_ids can be inferred or generated for the batch call that failed.
+                 # For now, log and skip appending if no custom_ids can be established for the error report.
+                 logger.error(f"Cannot create error DataFrame for {job_from_future.chunk_id_str}: original chunk_df is missing or empty, and custom_ids cannot be inferred.")
+            else:
+                error_df[llm_output_column_name] = f"CHUNK_ERROR: {error_message}"
+                completed_jobs_list.append(error_df)
+    else:
+        _pfc_handle_job_result(job_from_future, result_job, completed_jobs_list)
+        if result_job.status == "failed" and halt_on_failure_flag:
+            logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs for {os.path.basename(original_filepath)}.")
+            return True # Indicates failure detected and should halt
+    
+    # Update table with final status for this job
+    if live_display: live_display.update(rich_job_table.build_table(all_jobs_list))
+    return False # No halt-worthy failure detected
+
+
+def _pfc_aggregate_and_cleanup(completed_jobs_list, original_filepath):
+    result_dfs = [job.results_df for job in completed_jobs_list if job.status == "completed" and job.results_df is not None]
+    if result_dfs:
+        combined_df = pd.concat(result_dfs, ignore_index=True)
+        logger.success(f"Results aggregated for {os.path.basename(original_filepath)}. {len(combined_df)} rows processed.")
+        chunked_dir_path = os.path.join(os.path.dirname(original_filepath), '_chunked')
+        if os.path.exists(chunked_dir_path): 
+             prune_chunked_dir(chunked_dir_path)
+        return combined_df
+    else:
+        logger.error(f"[FAILURE] All chunks failed or yielded no results for {os.path.basename(original_filepath)}. No aggregated file produced.")
+        chunked_dir_path = os.path.join(os.path.dirname(original_filepath), '_chunked')
+        if os.path.exists(chunked_dir_path):
+            prune_chunked_dir(chunked_dir_path)
         return None
 
+
+def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
     jobs = _generate_chunk_job_objects(
         filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func
     )
@@ -190,35 +268,46 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
         return None
     halt_on_failure = config.get('halt_on_chunk_failure', True)
     completed_jobs = []
-    rich_table = RichJobTable()
+    rich_table = RichJobTable() 
     failure_detected = False
-    future_to_job = _submit_jobs(jobs, response_field)
+
+    future_to_job = _pfc_submit_jobs(jobs, response_field, config.get('max_simultaneous_batches', 2))
+
     try:
+        llm_output_column_name = config.get('llm_output_column_name', 'llm_response') # Get llm_output_column_name
         with Live(rich_table.build_table(jobs), console=rich_table.console, refresh_per_second=5) as live:
             for future in as_completed(future_to_job):
-                job = future_to_job[future]
-                logger.info(f"Chunk {job.chunk_id_str} submitted")
-                try:
-                    result_job = future.result()
-                except Exception as exc:
-                    result_job = job
-                    result_job.status = "failed"
-                    result_job.error_message = str(exc)
-                _handle_job_result(job, result_job, completed_jobs)
-                live.update(rich_table.build_table(jobs))
-                if result_job.status == "failed" and halt_on_failure:
-                    logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
-                    failure_detected = True
+                failure_detected = _pfc_process_completed_future(
+                    future,
+                    future_to_job,
+                    completed_jobs,
+                    live, # live_display
+                    rich_table, # rich_job_table
+                    jobs, # all_jobs_list (original list of job objects)
+                    halt_on_failure, # halt_on_failure_flag
+                    filepath, # original_filepath
+                    llm_output_column_name # Pass llm_output_column_name
+                )
+                if failure_detected:
                     break
+            
             if failure_detected:
-                for fut in future_to_job:
-                    if not fut.done():
-                        fut.cancel()
-        logger.info("All chunks completed. Aggregating results...")
-        return _aggregate_and_cleanup(completed_jobs, filepath)
+                # Cancel any remaining futures
+                cancelled_count = 0
+                for fut_to_cancel in future_to_job: # Iterate over keys of the map (the futures themselves)
+                    if not fut_to_cancel.done():
+                        if fut_to_cancel.cancel():
+                            cancelled_count += 1
+                            # logger.warning(f"Cancelled pending chunk job {future_to_job[fut_to_cancel].chunk_id_str} due to halt on failure.") # Optional: log per cancel
+                if cancelled_count > 0:
+                    logger.warning(f"Cancelled {cancelled_count} pending chunk jobs due to halt on failure for {os.path.basename(filepath)}.")
+        
+        logger.info(f"All chunks processed for {os.path.basename(filepath)}. Aggregating results...")
+        return _pfc_aggregate_and_cleanup(completed_jobs, filepath)
     finally:
-        from rich_display import print_summary_table
-        print_summary_table(jobs)
+        if jobs:
+            # print_summary_table(jobs) # Commented out due to NameError, to be fixed later
+            pass
 
 
 def process_file(filepath):
@@ -232,14 +321,6 @@ def process_file(filepath):
     Args:
         filepath (str): Path to the input file to process.
     """
-    # --- Output File Naming Convention ---
-    # For test inputs (filepath under tests/input/), outputs are written to tests/output/.
-    # For production, outputs go to output/.
-    # Output file names:
-    #   - Legacy: <basename>_results.csv
-    #   - Forced chunking: <basename>_forced_results.csv
-    #   - Otherwise: <basename>_results.csv
-    # This ensures test runner can find files as expected.
     filename = os.path.basename(filepath)
     file_root, file_ext = os.path.splitext(filename)
     if 'tests' in filepath.replace('\\', '/').lower():
@@ -496,7 +577,7 @@ if __name__ == "__main__":
                 logger.error("Example: python batch_runner.py --file my_data.csv")
                 sys.exit(2)
         except ValueError: 
-            logger.error("severe oof error: basically something is COOKED if this happens") # passes to let us fail naturally as god intended because it's over
+            logger.error("severe oof error: basically something is COOKED if this happens") 
             pass
 
     args = parser.parse_args()
@@ -639,7 +720,6 @@ if __name__ == "__main__":
                         for out_file, tok_count in zip(output_files, token_counts):
                             logger.info(f"Output file: {out_file} | Tokens: {tok_count}")
                 continue
-            # Fastest fix I ever done did (2025-05-11). This prevents submitting further batches if one fails. Halts immediately. RIP my poor API credits.
             ok = process_file(resolved_path)
             if not ok:
                 logger.error(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")

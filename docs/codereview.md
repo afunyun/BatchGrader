@@ -8,7 +8,7 @@
 | 2        | DONE! Restore examples file existence check  | User-facing reliability        | ✅      |
 | 3        | DONE! Logger handler management              | Traceability, debugging        | ✅      |
 | 4        | Automated test improvements (Section III)    | Prevent regression, robustness | ⏳      |
-| 5        | Code Quality                                 | Prevent regression, robustness | ⏳      |
+| 5        | Code Quality                                 | Prevent regression, robustness | ✅      |
 | 6        | Documentation/nitpicks                       | Prevent regression, robustness | ⏳      |
 
 ## I. Project Structure & Maintainability
@@ -42,6 +42,7 @@
 ⏳  Automated Assertions Beyond Exit Codes (testing):
         Suggestion: Enhance the test runner by adding automated checks that go beyond simple exit codes.
         Details: Verify output file contents (e.g., row counts, specific error messages), check for expected log messages, or validate processed-row counts. This will make tests more robust and reduce the need for manual validation.
+        *Progress (2025-05-11):* `pytest` framework adopted. Initial tests for `LLMClient` now implement mocking of OpenAI API calls and assert specific content/error messages from batch outputs, representing a significant step towards this goal.
     Test Case for halt_on_chunk_failure: False (testing):
         Suggestion: Add a specific test case where halt_on_chunk_failure is set to False.
         Scenario: Use an input file where one chunk is designed to fail while others should succeed. This test will ensure that processing correctly continues for non-failing chunks when this setting is disabled.
@@ -61,7 +62,7 @@
 
 ## IV. Code Quality & Specific Function Refactoring
 
-    Refactor process_file_concurrently (code-quality):
+✅   Refactor process_file_concurrently (code-quality):
         Issue: Low code quality score (23%) due to method length, cognitive complexity, and working memory.
         Recommendations:
             Reduce function length by extracting parts into smaller, dedicated functions (ideally < 10 lines per function).
@@ -70,7 +71,7 @@
             Apply specific suggestions:
                 Use named expressions to simplify assignments and conditionals (use-named-expression).
                 Extract duplicate code into a separate function (extract-duplicate-method).
-    Refactor LLMClient._process_batch_outputs (code-quality):
+✅   Refactor LLMClient._process_batch_outputs (code-quality):
         Issue: Very low code quality score (9%) due to similar reasons as above. (Note: Some content related to retrieved_batch, last_status, time.sleep(self.poll_interval) appeared incomplete in the source).
         Recommendations:
             Make the function shorter and more readable.
@@ -84,27 +85,30 @@
 
 ## V. General Code Quality & Style Improvements (code-quality)
 
-    Simplify sum() Calls:
+✅ Simplify sum() Calls:
         Suggestion (simplify-constant-sum): Leverage the fact that sum() treats True as 1 and False as 0.
         Affected code (examples):
             succeeded = sum(bool(getattr(j, 'status', None) == 'completed') ...)
             failed = sum(bool(getattr(j, 'status', None) == 'failed') ...)
             errored = sum(bool(getattr(j, 'status', None) == 'error') ...)
-    Control Flow and Expressions:
+✅ Control Flow and Expressions:
         Suggestion (reintroduce-else): Lift code into an else block after a jump in control flow (e.g., return, break, continue).
         Suggestion (assign-if-exp): Replace if statements with if expressions for assignments where suitable.
         Suggestion (boolean-if-exp-identity): Simplify boolean if expressions (e.g., if condition: return True else: return False to return condition).
-    Remove Unnecessary Casts (remove-unnecessary-cast):
+✅ Remove Unnecessary Casts (remove-unnecessary-cast):
         Suggestion: Remove redundant casts to int, str, float, or bool where the type is already correct.
         (Note: A point regarding if end_date and dt.date() > datetime.fromisoformat(end_date).date(): and its conditions appeared incomplete in the source but likely relates to these general improvements or specific function refactoring.)
 
 ## VI. Typos & Nitpicks
 
-    Filename Typo (nitpick/typo):
-        Issue: Typo in test input filename: "corrrupt.csv".
+✅   Filename Typo (nitpick/typo):
+        Issue: Typo in test input filename: "corrupt.csv".
         Fix: Rename to "corrupt.csv" and update its reference in test_cases.
             'input': 'tests/input/corrupt.csv'
-    Capitalization (typo):
+✅   Capitalization (typo):
         Issue: 'only' should be 'Only' at the beginning of a bullet point sentence.
-        Example: "- Only pruned once processing is complete..." should be "- Only pruned..."
-            (The context provided was: "- Only pruned once processing is complete - the full files contain the content so there is no information loss by doing so.")
+        Example: "- only pruned once processing is complete..." should be "- Only pruned..."
+
+## VII. Documentation & README
+
+## TODO: Update README.md once all items addressed

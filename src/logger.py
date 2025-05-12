@@ -32,17 +32,17 @@ class BatchGraderLogger:
         self.logger.addHandler(file_handler)
         self.info(f"BatchGrader run started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    def info(self, msg):
-        self.logger.info(msg)
-    def success(self, msg):
-        self.logger.log(SUCCESS_LEVEL_NUM, msg)
-    def warning(self, msg):
-        self.logger.warning(msg)
-    def error(self, msg):
-        self.logger.error(msg)
-    def event(self, msg):
-        self.logger.info(f"[EVENT] {msg}")
-    def debug(self, msg):
-        self.logger.debug(msg)
+    def info(self, msg, *args, **kwargs):
+        self.logger.info(msg, *args, **kwargs)
+    def success(self, msg, *args, **kwargs):
+        self.logger.log(SUCCESS_LEVEL_NUM, msg, *args, **kwargs)
+    def warning(self, msg, *args, **kwargs):
+        self.logger.warning(msg, *args, **kwargs)
+    def error(self, msg, *args, **kwargs):
+        self.logger.error(msg, *args, **kwargs)
+    def event(self, msg, *args, **kwargs):
+        self.logger.info(f"[EVENT] {msg}", *args, **kwargs)
+    def debug(self, msg, *args, **kwargs):
+        self.logger.debug(msg, *args, **kwargs)
 
 logger = BatchGraderLogger()
