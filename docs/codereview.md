@@ -2,14 +2,14 @@
 
 ## CURRENT PRIORITY
 
-| Priority | Task                                         | Rationale                      | Status |
-| -------- | -------------------------------------------- | ------------------------------ | ------ |
-| 1        | DONE! Fix chunking logic (split_token_limit) | Data integrity, core logic     | ✅     |
-| 2        | DONE! Restore examples file existence check  | User-facing reliability        | ✅     |
-| 3        | Logger handler management                    | Traceability, debugging        | ⏳     |
-| 4        | Automated test improvements (Section III)    | Prevent regression, robustness | ##TODO |
-| 5        | Code Quality                                 | Prevent regression, robustness | ##TODO |
-| 6        | Documentation/nitpicks                       | Prevent regression, robustness | ##TODO |
+| Priority | Task                                         | Rationale                      | Status  |
+| -------- | -------------------------------------------- | ------------------------------ | ------- |
+| 1        | DONE! Fix chunking logic (split_token_limit) | Data integrity, core logic     | ✅      |
+| 2        | DONE! Restore examples file existence check  | User-facing reliability        | ✅      |
+| 3        | DONE! Logger handler management              | Traceability, debugging        | ✅      |
+| 4        | Automated test improvements (Section III)    | Prevent regression, robustness | ⏳      |
+| 5        | Code Quality                                 | Prevent regression, robustness | ⏳      |
+| 6        | Documentation/nitpicks                       | Prevent regression, robustness | ⏳      |
 
 ## I. Project Structure & Maintainability
 
