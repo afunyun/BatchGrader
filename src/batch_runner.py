@@ -145,14 +145,24 @@ def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient, r
     Updates batch_job status and results in place.
     Returns the updated batch_job object.
     """
+    # Check if chunk_df is valid before proceeding
+    if batch_job.chunk_df is None or batch_job.chunk_df.empty:
+        if batch_job.status != "error": # Don't overwrite existing error status from generation
+             batch_job.status = "error"
+             batch_job.error_message = "Chunk DataFrame is None or empty."
+             batch_job.error_details = "Chunk DataFrame was not loaded or was empty when task started."
+             logger.error(f"[{batch_job.chunk_id_str}] Skipping task execution: {batch_job.error_message}")
+        return batch_job # Return early if no valid data
+
     try:
-        batch_job.status = "running"
-        
-        if batch_job.chunk_df is not None and 'custom_id' not in batch_job.chunk_df.columns:
+        batch_job.status = "running" # Set status only if we have data to process
+
+        # The original check for 'custom_id' can remain, but it's now safe because chunk_df is not None
+        if 'custom_id' not in batch_job.chunk_df.columns:
             logger.warning(f"[{batch_job.chunk_id_str}] 'custom_id' column is missing from chunk_df at the start of _execute_single_batch_job_task. This might cause issues with mocks or specific LLMClient implementations.")
 
         api_result = llm_client.run_batch_job(
-            batch_job.chunk_df, 
+            batch_job.chunk_df,
             batch_job.system_prompt,
             response_field_name=response_field_name,
             base_filename_for_tagging=batch_job.chunk_id_str
@@ -164,22 +174,22 @@ def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient, r
         elif isinstance(api_result, dict) and ('error' in api_result or 'custom_id_of_failed_item' in api_result): # Check for error indicators
             batch_job.status = "failed"
             batch_job.error_message = api_result.get('error_message', api_result.get('error', str(api_result)))
-            batch_job.error_details = api_result 
-            batch_job.result_data = None 
+            batch_job.error_details = api_result
+            batch_job.result_data = None
             logger.warning(f"[{batch_job.chunk_id_str}] Task resulted in failure (dict returned): {batch_job.error_message}")
         else:
-            batch_job.status = "error" 
+            batch_job.status = "error"
             batch_job.error_message = f"Unexpected API result type: {type(api_result)}"
             batch_job.error_details = str(api_result)
             batch_job.result_data = None
             logger.error(f"[{batch_job.chunk_id_str}] Task failed with unexpected API result: {batch_job.error_message}")
     except Exception as exc:
         logger.error(f"[{batch_job.chunk_id_str}] Exception in _execute_single_batch_job_task: {exc}", exc_info=True)
-        batch_job.status = "failed" 
+        batch_job.status = "failed"
         batch_job.error_message = str(exc)
         batch_job.error_details = traceback.format_exc()
         batch_job.result_data = None
-    
+
     return batch_job
 
 

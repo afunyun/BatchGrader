@@ -208,7 +208,7 @@ class LLMClient:
             llm_output_column_name = config.get('llm_output_column_name', 'llm_response')
             df_with_ids = df.copy()
             if 'custom_id' not in df_with_ids.columns:
-                 df_with_ids['custom_id'] = [str(uuid.uuid4()) for _ in range(len(df_with_ids))]
+                df_with_ids['custom_id'] = [str(uuid.uuid4()) for _ in range(len(df_with_ids))]
             df_with_ids[llm_output_column_name] = f"Mocked success for {base_filename_for_tagging}"
             return df_with_ids
 
