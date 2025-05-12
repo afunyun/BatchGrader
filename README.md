@@ -2,51 +2,17 @@
 
 ## Last updated: 2025-05-11
 
-## [0.4.0] (2025-05-11) Code Review - Reliability, Chunking, and Test Improvements///fixes since they were bigly broken in some ways
+0.4.0 (2025-05-11): tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
 
-- **Token limit adherence:** Ensures that all chunks conform to the token limit, preventing API errors.
-- **Examples file check:** Provides clear error messages if the examples file is not found, enhancing reliability.
-- **Improved test runner:** Cleans up files before tests to avoid naming conflicts and ensures test consistency.
-- **Consistent file management:** Maintains standardized file paths for outputs and logs in production and tests.
-- **Updated documentation:** Reflects all significant changes in the project records for easy reference.
+Desperately searched for loggers being manually shut down but none were found so moved on from that endeavor.
 
----
+0.3.3 (2025-05-11): Import Cleanup & CLI Table Fixes: nuked unused imports, pointed all test outputs properly at tests/output/, and swapped prints to console for RichJobTable live-updating wobbly progress bar. Forgot to give a version number so it gets a fake one 0.3.3.
 
-## [2025-05-11] Import Cleanup, Output Path Fixes, and CLI Table Improvements
+0.3.2 (2025-05-11): now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don’t lose nested settings.
 
-- **Change:**
-  - Cleaned up imports in `src/batch_runner.py`. Removed unused imports (`uuid`, duplicate `argparse`) and grouped standard, third-party, and project-specific imports for clarity and maintainability.
-  - Fixed output file path logic: All test outputs now go to `tests/output/` relative to project root, never `tests/tests/output`. Output naming now matches runner expectations (e.g., `_results.csv`, `_forced_results.csv`).
-  - CLI "stuttering" (repeated print/log output during polling) eliminated by using a single live-updating `RichJobTable` for all job status/progress.
+0.3.1 (2025-05-11): chunking finally works and storage paths have been cleaned.
 
-- **Implementation:**
-  - `src/batch_runner.py`: Cleaned import block; patched output directory logic for test runs; refactored CLI output to use `RichJobTable`.
-  - `src/llm_client.py`, `src/batch_job.py`: Updated as needed for table-based status.
-  - `tests/output/`: Now always contains test results, never nested subfolders.
-  - Documented here and in code comments.
-
-- **Artifacts:**
-  - Source: `src/batch_runner.py`, `src/llm_client.py`, `src/batch_job.py`, `src/rich_display.py`
-  - Docs: This changelog, updated code comments
-
----
-
-## [0.3.2] (2025-05-11)
-
-- **Enforced required pricing.csv:** BatchGrader now fails fast if docs/pricing.csv is missing, raising FileNotFoundError. Pricing is now a hard requirement for all cost estimation and token tracking. Because we said so sucka.
-- **Deep merge config enhancement:** User config files are now recursively merged with defaults, preventing accidental loss of nested settings
-
-## [0.3.1] (2025-05-11)
-
-- Fixed chunking (whoops)
-- Fixed storage locations in general
-
-## [0.3.0] (2025-05-11)
-
-- Implemented rich library for console output rather than basic prints, should prevent massive console spamming and also just look better//be more usable/extensible
-- Colorized text & status with emoji because why not
-- Added summary table to show totals for jobs, successes, failures, errors, tokens, and cost.
-- Persistent logging and event file improvements.
+0.3.0 (2025-05-11): ditched raw prints for rich console output with colors & emoji, added a summary table for jobs/tokens/cost, and beefed up logging.
 
 ## Overview
 
