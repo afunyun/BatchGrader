@@ -1,0 +1,6 @@
+id,text
+1,This is a good line for chunk 1.
+2,Another good line for chunk 1.
+3,This line will cause a simulated failure in chunk 2.
+4,A good line for chunk 3.
+5,Another good line for chunk 3.

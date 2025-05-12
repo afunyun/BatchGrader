@@ -11,55 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-test_cases = [
-    {
-        'name': 'Legacy Single-Batch',
-        'input': 'tests/input/small_legacy.csv',
-        'config': 'tests/test_config_legacy.yaml',
-    },
-    {
-        'name': 'Forced Chunking',
-        'input': 'tests/input/chunking_large.csv',
-        'config': 'tests/test_config_forced_chunk.yaml',
-    },
-    {
-        'name': 'Token-Based Chunking',
-        'input': 'tests/input/chunking_large.csv',
-        'config': 'tests/test_config_token_chunk.yaml',
-    },
-    {
-        'name': 'Concurrency Limit',
-        'input': 'tests/input/chunking_large.csv',
-        'config': 'tests/test_config_concurrency.yaml',
-    },
-    {
-        'name': 'Halt on Chunk Failure',
-        'input': 'tests/input/corrrupt.csv',
-        'config': 'tests/test_config_halt_on_failure.yaml',
-    },
-    {
-        'name': 'Empty Input',
-        'input': 'tests/input/empty.csv',
-        'config': 'tests/test_config_legacy.yaml',
-    },
-]
-
-"""
-BatchGrader Automated Integration Test Runner
-
-Runs all integration test cases and performs automated assertions on:
-- Output file row counts and contents
-- Log file messages
-- Processed-row counts
-
-Outputs a summary table at the end. No manual input required.
-"""
-import subprocess
-import sys
 import os
 import glob
 import pandas as pd
-from pathlib import Path
 from datetime import datetime
 
 test_cases = [
@@ -94,6 +48,27 @@ test_cases = [
         'expected_output': 'tests/output/chunking_large_concurrency_results.csv',
         'expected_rows': 100,
         'expected_log_msgs': ['Splitting input file'],
+    },
+    {
+        'name': 'Continue on Chunk Failure',
+        'input': 'tests/input/chunk_with_failure.csv',
+        'config': 'tests/test_config_continue_on_failure.yaml',
+        'expected_output': 'tests/output/chunk_with_failure_results.csv', 
+        'expected_rows': 3, 
+        'expected_log_msgs': [
+            "Generated 5 BatchJob objects for chunk_with_failure.csv",
+            "Simulating failure for chunk: chunk_with_failure_chunk_2 due to TEST_KEY_FAIL_CONTINUE",
+            "Chunk chunk_with_failure_chunk_2 failed: Simulated failure for chunk_with_failure_chunk_2",
+            "Simulating failure for chunk: chunk_with_failure_chunk_4 due to TEST_KEY_FAIL_CONTINUE",
+            "Chunk chunk_with_failure_chunk_4 failed: Simulated failure for chunk_with_failure_chunk_4",
+            "Simulating success for chunk: chunk_with_failure_chunk_1 due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)",
+            "Chunk chunk_with_failure_chunk_1 completed successfully.",
+            "Simulating success for chunk: chunk_with_failure_chunk_3 due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)",
+            "Chunk chunk_with_failure_chunk_3 completed successfully.",
+            "Simulating success for chunk: chunk_with_failure_chunk_5 due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)",
+            "Chunk chunk_with_failure_chunk_5 completed successfully.",
+            "BatchGrader run finished successfully for tests/input/chunk_with_failure.csv"
+        ],
     },
 ]
 def get_latest_log():
@@ -160,11 +135,40 @@ def run_test(test):
                     summary.get('log_check_pass', True))
     return summary
 
+def run_invalid_config_test(test):
+    print(f"\n=== Running Invalid Config Test: {test['name']} ===")
+    log_path = None
+    try:
+        latest_log = get_latest_log()
+        if latest_log and os.path.exists(latest_log):
+            os.remove(latest_log)
+    except Exception as e:
+        print(f"Warning: Failed to remove old log file {latest_log}: {e}")
+    cmd = [
+        sys.executable, '-u', 'src/batch_runner.py',
+        '--config', test['config'],
+        '--file', test['input']
+    ]
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(Path(__file__).parent.parent.resolve())
+    result = subprocess.run(cmd, env=env)
+    summary = {'name': test['name']}
+    summary['exit_code'] = result.returncode
+    log_path = get_latest_log()
+    ok, msg = check_log_messages(log_path, test['expected_log_msgs'])
+    summary['log_check'] = msg
+    summary['log_check_pass'] = ok
+    summary['error_expected'] = test.get('expect_error', False)
+    summary['pass'] = (result.returncode != 0 if test.get('expect_error', False) else result.returncode == 0) and ok
+    return summary
+
 def main():
     print("\nBatchGrader Automated Integration Test Runner\n============================================")
     results = []
     for test in test_cases:
         results.append(run_test(test))
+    for test in invalid_config_cases:
+        results.append(run_invalid_config_test(test))
     print("\n=== Test Summary ===")
     for r in results:
         print(f"{r['name']}: {'PASS' if r['pass'] else 'FAIL'}")
@@ -178,4 +182,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

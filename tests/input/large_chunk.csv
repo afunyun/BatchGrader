@@ -1,0 +1,21 @@
+id,text_content
+chunk1_id1,"Text for chunk 1 item 1..."
+chunk1_id2,"Text for chunk 1 item 2..."
+chunk1_id3,"Text for chunk 1 item 3..."
+chunk1_id4,"Text for chunk 1 item 4..."
+chunk2_id1,"Text for chunk 2 item 1..." // This chunk will be made to fail
+chunk2_id2,"Text for chunk 2 item 2..."
+chunk2_id3,"Text for chunk 2 item 3..."
+chunk2_id4,"Text for chunk 2 item 4..."
+chunk3_id1,"Text for chunk 3 item 1..."
+chunk3_id2,"Text for chunk 3 item 2..."
+item1,This is the first item for processing.
+item2,Here is another short text for the batch.
+item3,A third piece of data.
+item4,Yet more input content.
+item5,The fifth entry in our list.
+item6,Some more text for the sixth item.
+item7,Another line of text.
+item8,The eighth piece of information.
+item9,Nearly done with sample data.
+item10,Final item for this test file.
