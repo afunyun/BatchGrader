@@ -2,6 +2,10 @@
 
 ## Last updated: 2025-05-11
 
+**0.4.1 (2025-05-11):**
+
+- Fixed tests returning None for vars and not knowing what dir they were in, that was rough.
+
 **0.4.0 (2025-05-11):**
 
 - Tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
