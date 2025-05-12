@@ -15,22 +15,16 @@ config = load_config()
 
 def get_default_api_key():
     return config['openai_api_key']
-
 def get_default_model():
     return config['openai_model_name']
-
 def get_default_endpoint():
     return config['batch_api_endpoint']
-
 def get_default_max_tokens():
     return int(config['max_tokens_per_response'])
-
 def get_default_poll_interval():
     return int(config['poll_interval_seconds'])
-
 def get_default_response_field():
     return config['response_field']
-
 class LLMClient:
     def __init__(self, model=None, api_key=None, endpoint=None):
         self.api_key = api_key or get_default_api_key()
@@ -103,6 +97,44 @@ class LLMClient:
             time.sleep(self.poll_interval)
 
     def _process_batch_outputs(self, batch_job_obj, df_with_custom_ids):
+        def _parse_output_file(output_file_id, results_map):
+            try:
+                file_response = self.client.files.content(output_file_id)
+                output_data = file_response.text
+                for line in output_data.strip().splitlines():
+                    item = json.loads(line)
+                    custom_id = item.get("custom_id")
+                    if not custom_id:
+                        logger.warning(f"Warning: Found item in output without custom_id: {item}")
+                        continue
+                    if (resp := item.get("response")) and resp.get("status_code") == 200:
+                        try:
+                            content = resp["body"]["choices"][0]["message"]["content"]
+                            results_map[custom_id] = content
+                        except (KeyError, IndexError, TypeError) as e:
+                            logger.warning(f"Error parsing successful response for custom_id {custom_id}: {e}. Full item: {item}")
+                            results_map[custom_id] = "Error: Malformed response data"
+                    elif (err := item.get("error")):
+                        err_msg = err.get('message', 'Unknown error')
+                        err_code = err.get('code', 'N/A')
+                        results_map[custom_id] = f"Error: {err_code} - {err_msg}"
+                        logger.warning(f"Request {custom_id} failed: {err_code} - {err_msg}")
+                    else:
+                        results_map[custom_id] = "Error: Unknown structure in output item"
+                        logger.warning(f"Warning: Unknown structure for item with custom_id {custom_id}: {item}")
+            except Exception as e:
+                logger.warning(f"Error retrieving or parsing output file {output_file_id}: {e}")
+                for cid in df_with_custom_ids['custom_id']:
+                    if cid not in results_map:
+                        results_map[cid] = "Error: Failed to retrieve/parse batch output"
+
+        def _retrieve_error_file(error_file_id):
+            try:
+                error_file_content = self.client.files.content(error_file_id).text
+                logger.info(f"Batch Error File Content ({error_file_id}):\n{error_file_content[:1000]}...")
+            except Exception as e:
+                logger.warning(f"Error retrieving batch error file {error_file_id}: {e}")
+
         results_map = {}
         llm_output_column_name = 'llm_score'
         if batch_job_obj.status == "completed":
@@ -110,45 +142,14 @@ class LLMClient:
             error_file_id = batch_job_obj.error_file_id
             if output_file_id:
                 logger.info(f"Retrieving output file: {output_file_id}")
-                try:
-                    file_response = self.client.files.content(output_file_id)
-                    output_data = file_response.text
-                    for line in output_data.strip().splitlines():
-                        item = json.loads(line)
-                        custom_id = item.get("custom_id")
-                        if not custom_id:
-                            logger.warning(f"Warning: Found item in output without custom_id: {item}")
-                            continue
-                        if item.get("response") and item["response"].get("status_code") == 200:
-                            try:
-                                content = item["response"]["body"]["choices"][0]["message"]["content"]
-                                results_map[custom_id] = content
-                            except (KeyError, IndexError, TypeError) as e:
-                                logger.warning(f"Error parsing successful response for custom_id {custom_id}: {e}. Full item: {item}")
-                                results_map[custom_id] = "Error: Malformed response data"
-                        elif item.get("error"):
-                            err_msg = item["error"].get('message', 'Unknown error')
-                            err_code = item["error"].get('code', 'N/A')
-                            results_map[custom_id] = f"Error: {err_code} - {err_msg}"
-                            logger.warning(f"Request {custom_id} failed: {err_code} - {err_msg}")
-                        else:
-                            results_map[custom_id] = "Error: Unknown structure in output item"
-                            logger.warning(f"Warning: Unknown structure for item with custom_id {custom_id}: {item}")
-                except Exception as e:
-                    logger.warning(f"Error retrieving or parsing output file {output_file_id}: {e}")
-                    for cid in df_with_custom_ids['custom_id']:
-                        if cid not in results_map: results_map[cid] = "Error: Failed to retrieve/parse batch output"
+                _parse_output_file(output_file_id, results_map)
             else:
                 logger.warning("Batch completed, but no output file ID was provided.")
                 for cid in df_with_custom_ids['custom_id']:
                     results_map[cid] = "Error: Batch completed with no output file"
             if error_file_id:
                 logger.info(f"Retrieving error file: {error_file_id}")
-                try:
-                    error_file_content = self.client.files.content(error_file_id).text
-                    logger.info(f"Batch Error File Content ({error_file_id}):\n{error_file_content[:1000]}...")
-                except Exception as e:
-                    logger.warning(f"Error retrieving batch error file {error_file_id}: {e}")
+                _retrieve_error_file(error_file_id)
         else:
             logger.warning(f"Batch job did not complete successfully. Status: {batch_job_obj.status}")
             for cid in df_with_custom_ids['custom_id']:

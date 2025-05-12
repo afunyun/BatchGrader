@@ -150,64 +150,72 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
     import pandas as pd
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from llm_client import LLMClient
+    from rich.live import Live
+
+    def _submit_jobs(jobs, response_field):
+        llm_client = LLMClient()
+        with ThreadPoolExecutor(max_workers=config.get('max_simultaneous_batches', 2)) as executor:
+            return {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field): job for job in jobs}
+
+    def _handle_job_result(job, result_job, completed_jobs):
+        logger.info(f"Chunk {job.chunk_id_str} started")
+        if result_job.status == "running":
+            logger.info(f"Chunk {job.chunk_id_str} running")
+        if result_job.status == "completed":
+            logger.success(f"Chunk {job.chunk_id_str} completed")
+        if result_job.status == "failed":
+            logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
+        completed_jobs.append(result_job)
+
+    def _aggregate_and_cleanup(completed_jobs, filepath):
+        result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
+        if result_dfs:
+            combined = pd.concat(result_dfs, ignore_index=True)
+            logger.success(f"Results aggregated. {len(combined)} rows processed.")
+            from src.file_utils import prune_chunked_dir
+            chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
+            prune_chunked_dir(chunked_dir)
+            return combined
+        logger.error(f"[FAILURE] All chunks failed for {filepath}.")
+        from src.file_utils import prune_chunked_dir
+        chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
+        prune_chunked_dir(chunked_dir)
+        return None
+
     jobs = _generate_chunk_job_objects(
         filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func
     )
     if not jobs:
         logger.info(f"No data loaded from {filepath}. Skipping.")
         return None
-    max_workers = config.get('max_simultaneous_batches', 2)
     halt_on_failure = config.get('halt_on_chunk_failure', True)
     completed_jobs = []
     rich_table = RichJobTable()
-    from rich.live import Live
+    failure_detected = False
+    future_to_job = _submit_jobs(jobs, response_field)
     try:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            llm_client = LLMClient()
-            future_to_job = {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field): job for job in jobs}
-            failure_detected = False
-            with Live(rich_table.build_table(jobs), console=rich_table.console, refresh_per_second=5) as live:
-                for future in as_completed(future_to_job):
-                    job = future_to_job[future]
-                    logger.info(f"Chunk {job.chunk_id_str} submitted")
-                    try:
-                        result_job = future.result()
-                    except Exception as exc:
-                        result_job = job
-                        result_job.status = "failed"
-                        result_job.error_message = str(exc)
-                    logger.info(f"Chunk {job.chunk_id_str} started")
-                    if result_job.status == "running":
-                        logger.info(f"Chunk {job.chunk_id_str} running")
-                    if result_job.status == "completed":
-                        logger.success(f"Chunk {job.chunk_id_str} completed")
-                    if result_job.status == "failed":
-                        logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
-                    completed_jobs.append(result_job)
-                    live.update(rich_table.build_table(jobs))
-                    if result_job.status == "failed" and halt_on_failure:
-                        logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
-                        failure_detected = True
-                        break
-                if failure_detected:
-                    for fut in future_to_job:
-                        if not fut.done():
-                            fut.cancel()
-            logger.info("All chunks completed. Aggregating results...")
-            result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
-            if result_dfs:
-                combined = pd.concat(result_dfs, ignore_index=True)
-                logger.success(f"Results aggregated. {len(combined)} rows processed.")
-                from src.file_utils import prune_chunked_dir
-                chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
-                prune_chunked_dir(chunked_dir)
-                return combined
-            else:
-                logger.error(f"[FAILURE] All chunks failed for {filepath}.")
-                from src.file_utils import prune_chunked_dir
-                chunked_dir = os.path.join(os.path.dirname(filepath), '_chunked')
-                prune_chunked_dir(chunked_dir)
-                return None
+        with Live(rich_table.build_table(jobs), console=rich_table.console, refresh_per_second=5) as live:
+            for future in as_completed(future_to_job):
+                job = future_to_job[future]
+                logger.info(f"Chunk {job.chunk_id_str} submitted")
+                try:
+                    result_job = future.result()
+                except Exception as exc:
+                    result_job = job
+                    result_job.status = "failed"
+                    result_job.error_message = str(exc)
+                _handle_job_result(job, result_job, completed_jobs)
+                live.update(rich_table.build_table(jobs))
+                if result_job.status == "failed" and halt_on_failure:
+                    logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
+                    failure_detected = True
+                    break
+            if failure_detected:
+                for fut in future_to_job:
+                    if not fut.done():
+                        fut.cancel()
+        logger.info("All chunks completed. Aggregating results...")
+        return _aggregate_and_cleanup(completed_jobs, filepath)
     finally:
         from rich_display import print_summary_table
         print_summary_table(jobs)

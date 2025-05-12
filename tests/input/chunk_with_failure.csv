@@ -1,0 +1,6 @@
+text,response
+"Good example 1",42
+"Bad example 1",ERROR
+"Good example 2",37
+"Bad example 2",ERROR
+"Good example 3",41

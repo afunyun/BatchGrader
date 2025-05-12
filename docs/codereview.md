@@ -39,7 +39,7 @@
 
 ## III. Testing Enhancements
 
-⏳ Automated Assertions Beyond Exit Codes (testing):
+⏳  Automated Assertions Beyond Exit Codes (testing):
         Suggestion: Enhance the test runner by adding automated checks that go beyond simple exit codes.
         Details: Verify output file contents (e.g., row counts, specific error messages), check for expected log messages, or validate processed-row counts. This will make tests more robust and reduce the need for manual validation.
     Test Case for halt_on_chunk_failure: False (testing):
