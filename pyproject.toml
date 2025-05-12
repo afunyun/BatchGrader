@@ -1,6 +1,6 @@
 [project]
 name = "batchgrader"
-version = "0.3.2"
+version = "0.4.0"
 description = "Simple cli/config based batch job tool for OpenAI API."
 authors = [
     {name = "afunyun", email = "github@afjaun.mozmail.com"}

@@ -32,4 +32,6 @@ tests/logs/
 tests/output/
 output/logs/
 tests/input/_chunked/
-docs/codereview.md
+
+docs/scratchpad_stale.md
+docs/previous_patchnotes.md

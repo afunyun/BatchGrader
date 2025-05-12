@@ -14,7 +14,7 @@ Columns:
     - Progress
     - Error Info
 """
-from src.config_loader import load_config
+from config_loader import load_config
 config = load_config()
 from rich.live import Live
 from rich.table import Table
@@ -23,11 +23,11 @@ from rich.console import Console
 from rich import box
 
 class RichJobTable:
-    def __init__(self):
-        self.console = Console()
-        self.live = None
+    def __init__(self, console=None):
+        from rich.console import Console
+        self.console = console or Console()     
 
-    def _build_table(self, jobs):
+    def build_table(self, jobs):
         table = Table(title="BatchGrader Job Status", box=box.SIMPLE, expand=True)
         table.add_column("Chunk Name", style="bold")
         table.add_column("Batch ID", style="dim")
@@ -71,26 +71,6 @@ class RichJobTable:
                 str(getattr(job, "error_message", "")) or ""
             )
         return table
-
-    def update_table(self, jobs):
-        """
-        Call this repeatedly with the current list of jobs to update the live table.
-        """
-        table = self._build_table(jobs)
-        if self.live is None:
-            self.live = Live(table, console=self.console, refresh_per_second=5)
-            self.live.__enter__()
-        else:
-            self.live.update(table)
-
-    def finalize_table(self):
-        """
-        Call this once after all jobs are done to finalize/close the live display.
-        """
-        if self.live:
-            self.live.__exit__(None, None, None)
-            self.live = None
-
 
 def print_summary_table(jobs):
     """

@@ -8,8 +8,8 @@ from openai import OpenAI
 from src.token_tracker import log_token_usage_event
 from src.logger import logger
 from datetime import datetime
-from src.rich.console import Console
-from src.config_loader import load_config
+from rich.console import Console
+from config_loader import load_config
 
 config = load_config()
 

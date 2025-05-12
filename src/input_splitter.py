@@ -68,23 +68,40 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
         for i in range(n_rows % force_chunk_count):
             chunk_sizes[i] += 1
         start = 0
+        temp_output_files = []
+        temp_token_counts = []
         for part_num, size in enumerate(chunk_sizes, 1):
             chunk = df.iloc[start:start+size]
             start += size
             chunk_tokens = chunk.apply(count_tokens_fn, axis=1).sum() if count_tokens_fn else 0
-            out_path = os.path.join(output_dir, f"{base_name}_part{part_num}{ext}")
-            if ext == '.csv':
-                chunk.to_csv(out_path, index=False)
-            else:
-                chunk.to_json(out_path, orient='records', lines=(ext=='.jsonl'))
-            output_files.append(out_path)
-            token_counts.append(chunk_tokens)
             if token_limit is not None and chunk_tokens > token_limit:
-                msg = f"Chunk {part_num} exceeds token limit ({chunk_tokens} > {token_limit})!"
                 if logger:
-                    logger.warning(msg)
+                    logger.warning(f"Chunk {part_num} exceeds token limit ({chunk_tokens} > {token_limit}), recursively splitting.")
                 else:
-                    print(f"[WARN] {msg}")
+                    print(f"[WARN] Chunk {part_num} exceeds token limit ({chunk_tokens} > {token_limit}), recursively splitting.")
+                chunk_out_files, chunk_token_counts = split_file_by_token_limit(
+                    input_path=None,
+                    token_limit=token_limit,
+                    count_tokens_fn=count_tokens_fn,
+                    response_field=response_field,
+                    row_limit=None,
+                    output_dir=output_dir,
+                    file_prefix=f"{base_name}_part{part_num}_split",
+                    force_chunk_count=None,
+                    logger=logger
+                ) if not chunk.empty else ([], [])
+                temp_output_files.extend(chunk_out_files)
+                temp_token_counts.extend(chunk_token_counts)
+            else:
+                out_path = os.path.join(output_dir, f"{base_name}_part{part_num}{ext}")
+                if ext == '.csv':
+                    chunk.to_csv(out_path, index=False)
+                else:
+                    chunk.to_json(out_path, orient='records', lines=(ext=='.jsonl'))
+                temp_output_files.append(out_path)
+                temp_token_counts.append(chunk_tokens)
+        output_files = temp_output_files
+        token_counts = temp_token_counts
         print(f"[EVENT] file_split: {{'input_file': '{input_path}', 'output_files': {output_files}, 'token_counts': {token_counts}}}")
         return output_files, token_counts
 

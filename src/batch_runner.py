@@ -1,18 +1,11 @@
 import os
-import uuid
-import datetime
-import argparse
 import sys
+import datetime
 import logging
+import tempfile
+from pathlib import Path
 
 from log_utils import prune_logs_if_needed
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'logs')
-ARCHIVE_DIR = os.path.join(LOG_DIR, 'archive')
-prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from pathlib import Path
 from logger import logger, BatchGraderLogger
 from data_loader import load_data, save_data
 from evaluator import load_prompt_template
@@ -22,8 +15,13 @@ from src.cost_estimator import CostEstimator
 from src.token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary, log_token_usage_event
 from src.input_splitter import split_file_by_token_limit
 from src.batch_job import BatchJob
-import tempfile
-from rich_display import RichJobTable  # Live CLI job table
+from rich_display import RichJobTable
+
+LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'logs')
+ARCHIVE_DIR = os.path.join(LOG_DIR, 'archive')
+prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 def _generate_chunk_job_objects(
@@ -55,8 +53,6 @@ def _generate_chunk_job_objects(
 
     jobs = []
     force_chunk_count = config.get('force_chunk_count', 0)
-    # All chunked input files are written to input/_chunked/ for clarity, cleanup, and to avoid cluttering the main input/ directory.
-    # This convention is enforced here and in the input_splitter. All code that references chunked files must use this location.
     input_dir = os.path.dirname(original_filepath)
     chunked_dir = os.path.join(input_dir, '_chunked')
     os.makedirs(chunked_dir, exist_ok=True)
@@ -151,17 +147,6 @@ def _execute_single_batch_job_task(batch_job, llm_client, response_field_name):
 
 
 def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
-    """
-    Orchestrates concurrent processing of a file by splitting into chunks and running jobs in parallel.
-    Displays a live-updating table of job statuses using RichJobTable.
-    Respects max_simultaneous_batches and halt_on_chunk_failure config settings.
-    Aggregates results and returns a combined DataFrame, or None if all chunks fail.
-    """
-    """
-    Orchestrates concurrent processing of a file by splitting into chunks and running jobs in parallel.
-    Respects max_simultaneous_batches and halt_on_chunk_failure config settings.
-    Aggregates results and returns a combined DataFrame, or None if all chunks fail.
-    """
     import pandas as pd
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from llm_client import LLMClient
@@ -175,38 +160,39 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
     halt_on_failure = config.get('halt_on_chunk_failure', True)
     completed_jobs = []
     rich_table = RichJobTable()
+    from rich.live import Live
     try:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             llm_client = LLMClient()
             future_to_job = {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field): job for job in jobs}
             failure_detected = False
-            rich_table.update_table(jobs)
-            for future in as_completed(future_to_job):
-                job = future_to_job[future]
-                logger.info(f"Chunk {job.chunk_id_str} submitted")
-                try:
-                    result_job = future.result()
-                except Exception as exc:
-                    result_job = job
-                    result_job.status = "failed"
-                    result_job.error_message = str(exc)
-                logger.info(f"Chunk {job.chunk_id_str} started")
-                if result_job.status == "running":
-                    logger.info(f"Chunk {job.chunk_id_str} running")
-                if result_job.status == "completed":
-                    logger.success(f"Chunk {job.chunk_id_str} completed")
-                if result_job.status == "failed":
-                    logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
-                completed_jobs.append(result_job)
-                rich_table.update_table(jobs)
-                if result_job.status == "failed" and halt_on_failure:
-                    logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
-                    failure_detected = True
-                    break
-            if failure_detected:
-                for fut in future_to_job:
-                    if not fut.done():
-                        fut.cancel()
+            with Live(rich_table.build_table(jobs), console=rich_table.console, refresh_per_second=5) as live:
+                for future in as_completed(future_to_job):
+                    job = future_to_job[future]
+                    logger.info(f"Chunk {job.chunk_id_str} submitted")
+                    try:
+                        result_job = future.result()
+                    except Exception as exc:
+                        result_job = job
+                        result_job.status = "failed"
+                        result_job.error_message = str(exc)
+                    logger.info(f"Chunk {job.chunk_id_str} started")
+                    if result_job.status == "running":
+                        logger.info(f"Chunk {job.chunk_id_str} running")
+                    if result_job.status == "completed":
+                        logger.success(f"Chunk {job.chunk_id_str} completed")
+                    if result_job.status == "failed":
+                        logger.error(f"Chunk {job.chunk_id_str} failed: {result_job.error_message}")
+                    completed_jobs.append(result_job)
+                    live.update(rich_table.build_table(jobs))
+                    if result_job.status == "failed" and halt_on_failure:
+                        logger.error(f"[HALT] Failure detected in chunk {result_job.chunk_id_str}. Halting remaining jobs.")
+                        failure_detected = True
+                        break
+                if failure_detected:
+                    for fut in future_to_job:
+                        if not fut.done():
+                            fut.cancel()
             logger.info("All chunks completed. Aggregating results...")
             result_dfs = [job.results_df for job in completed_jobs if job.status == "completed" and job.results_df is not None]
             if result_dfs:
@@ -223,7 +209,6 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
                 prune_chunked_dir(chunked_dir)
                 return None
     finally:
-        rich_table.finalize_table()
         from rich_display import print_summary_table
         print_summary_table(jobs)
 
@@ -239,17 +224,36 @@ def process_file(filepath):
     Args:
         filepath (str): Path to the input file to process.
     """
+    # --- Output File Naming Convention ---
+    # For test inputs (filepath under tests/input/), outputs are written to tests/output/.
+    # For production, outputs go to output/.
+    # Output file names:
+    #   - Legacy: <basename>_results.csv
+    #   - Forced chunking: <basename>_forced_results.csv
+    #   - Otherwise: <basename>_results.csv
+    # This ensures test runner can find files as expected.
     filename = os.path.basename(filepath)
-    base_output_path = os.path.join(OUTPUT_DIR, filename)
-
-    if os.path.exists(base_output_path):
-        file_root, file_ext = os.path.splitext(filename)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        new_filename = f"{file_root}_{timestamp}{file_ext}"
-        output_path = os.path.join(OUTPUT_DIR, new_filename)
-        logger.info(f"Output file already exists. Using new filename: {new_filename}")
+    file_root, file_ext = os.path.splitext(filename)
+    if 'tests' in filepath.replace('\\', '/').lower():
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        output_dir = os.path.join(project_root, 'tests', 'output')
     else:
-        output_path = base_output_path
+        output_dir = OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+    config_force_chunk = config.get('force_chunk_count', 0)
+    if 'legacy' in file_root.lower():
+        out_suffix = '_results'
+    elif config_force_chunk and config_force_chunk > 1:
+        out_suffix = '_forced_results'
+    else:
+        out_suffix = '_results'
+    output_filename = f"{file_root}{out_suffix}{file_ext}"
+    output_path = os.path.join(output_dir, output_filename)
+    if os.path.exists(output_path):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"{file_root}{out_suffix}_{timestamp}{file_ext}"
+        output_path = os.path.join(output_dir, output_filename)
+        logger.info(f"Output file already exists. Using new filename: {output_filename}")
 
     logger.info(f"Processing file: {filepath}")
     df = None
@@ -265,6 +269,8 @@ def process_file(filepath):
         if is_examples_file_default(abs_examples_path):
             system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
         else:
+            if not abs_examples_path.exists():
+                raise FileNotFoundError(f"Examples file not found: {abs_examples_path}. Please provide a valid examples file or update your config.")
             with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
                 example_lines = [line.strip() for line in ex_f if line.strip()]
             if not example_lines:
@@ -579,6 +585,8 @@ if __name__ == "__main__":
             if is_examples_file_default(abs_examples_path):
                 system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
             else:
+                if not abs_examples_path.exists():
+                    raise FileNotFoundError(f"Examples file not found: {abs_examples_path}. Please provide a valid examples file or update your config.")
                 with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
                     example_lines = [line.strip() for line in ex_f if line.strip()]
                 if not example_lines:
