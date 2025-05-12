@@ -21,7 +21,7 @@
 
 ## II. Core Logic & Bug Fixes
 
-    Logger Handlers Management (bug_risk):
+    ✅ Logger Handlers Management (bug_risk):
         Issue: Manual flushing and closing of logger handlers can interfere with logger reuse across different modules, potentially breaking them if they expect the logger to remain active.
         Recommendation: Avoid manual flushing/closing. Rely on the logger's own lifecycle management or remove such cleanup steps.
     ✅ *DONE* Restore Existence Check for Examples File (bug_risk):
@@ -47,7 +47,6 @@
         Suggestion: Add a specific test case where halt_on_chunk_failure is set to False.
         Scenario: Use an input file where one chunk is designed to fail while others should succeed. This test will ensure that processing correctly continues for non-failing chunks when this setting is disabled.
         Example Test Config:
-        Python
 
         {
             'name': 'Continue on Chunk Failure',

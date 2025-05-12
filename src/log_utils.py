@@ -38,14 +38,12 @@ def prune_logs_if_needed(log_dir, archive_dir, max_logs=MAX_LOGS, max_archive=MA
             ts = datetime.now().isoformat()
             f.write(f"[{ts}] {action.upper()}: {files}\n")
 
-    # List log files (exclude .keep and archive dir)
     logs = [f for f in os.listdir(log_dir)
             if os.path.isfile(os.path.join(log_dir, f))
             and f != '.keep'
             and f != 'archive']
     logs.sort(key=lambda f: os.path.getmtime(os.path.join(log_dir, f)))
     
-    # Move oldest logs to archive if over threshold
     if len(logs) > max_logs:
         to_move = logs[:len(logs)-max_logs]
         for filename in to_move:
@@ -54,7 +52,6 @@ def prune_logs_if_needed(log_dir, archive_dir, max_logs=MAX_LOGS, max_archive=MA
             shutil.move(src, dst)
         log_action('move', to_move)
     
-    # Prune archive if over threshold
     archived = [f for f in os.listdir(archive_dir)
                 if os.path.isfile(os.path.join(archive_dir, f)) and f != 'prune.log']
     archived.sort(key=lambda f: os.path.getmtime(os.path.join(archive_dir, f)))

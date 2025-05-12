@@ -1,6 +1,14 @@
 # BatchGrader: Batch LLM Evaluation with OpenAI Batch API
 
-## Last updated: 2025-05-11
+## Last updated: 2025-05-12
+
+**0.4.3 (2025-05-12):**
+
+- Fixed pytest.ini_options not being read by pytest.
+
+**0.4.2 (2025-05-12):**
+
+- Fixed asyncio_default_fixture_loop_scope not being read by pytest.
 
 **0.4.1 (2025-05-11):**
 

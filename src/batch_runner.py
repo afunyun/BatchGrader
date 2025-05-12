@@ -45,12 +45,13 @@ def _generate_chunk_job_objects(original_filepath: str,
                                 ) -> list[BatchJob]:
     """Splits the input file using input_splitter.split_file and creates BatchJob objects for each chunk."""
     
-    splitter_config = config.get('input_splitter', {})
+    splitter_config = config.get('input_splitter_options', {})
     max_tokens_per_chunk = splitter_config.get('max_tokens_per_chunk', config.get('split_token_limit', 20000))
     max_rows_per_chunk = splitter_config.get('max_rows_per_chunk', config.get('split_row_limit', None))
+    force_chunk_count_val = splitter_config.get('force_chunk_count', None)
 
     logger.debug(f"Generating chunk job objects for: {original_filepath}")
-    logger.debug(f"Using splitter config: max_tokens={max_tokens_per_chunk}, max_rows={max_rows_per_chunk}")
+    logger.debug(f"Using splitter config: max_tokens={max_tokens_per_chunk}, max_rows={max_rows_per_chunk}, force_chunks={force_chunk_count_val}")
 
     if not hasattr(tiktoken_encoding_func, 'encode'):
         logger.error(f"Invalid tiktoken_encoding_func passed. Type: {type(tiktoken_encoding_func)}. Attempting to load default.")
@@ -73,6 +74,7 @@ def _generate_chunk_job_objects(original_filepath: str,
             count_tokens_fn=_count_row_tokens,
             response_field=response_field,
             row_limit=max_rows_per_chunk,
+            force_chunk_count=force_chunk_count_val,
             logger=logger
         )
     except Exception as e:
@@ -310,26 +312,51 @@ def _pfc_process_completed_future(
 
     return False 
 
-def _pfc_aggregate_and_cleanup(completed_jobs_list, original_filepath):
-    result_dfs = [job.result_data for job in completed_jobs_list if job.status == "completed" and job.result_data is not None]
-    if result_dfs:
-        combined_df = pd.concat(result_dfs, ignore_index=True)
-        logger.success(f"Results aggregated for {os.path.basename(original_filepath)}. {len(combined_df)} rows processed.")
-        # Ensure original 'id' column is present if 'custom_id' was used
-        if 'custom_id' in combined_df.columns and 'id' not in combined_df.columns:
-            combined_df['id'] = combined_df['custom_id']
-            logger.debug(f"Added 'id' column to aggregated results, copied from 'custom_id'.")
-        
-        chunked_dir_path = os.path.join(os.path.dirname(original_filepath), '_chunked')
-        if os.path.exists(chunked_dir_path): 
-            prune_chunked_dir(chunked_dir_path)
-        return combined_df
-    else:
+def _pfc_aggregate_and_cleanup(completed_jobs_list: list[BatchJob], 
+                               original_filepath: str,
+                               response_field_name: str) -> Optional[pd.DataFrame]:
+    """Aggregates results from completed jobs and cleans up chunked files."""
+    all_results_dfs = []
+    total_processed_rows = 0 # This will now count only successfully processed rows for the log message
+    original_file_stem = Path(original_filepath).stem
+
+    for job in completed_jobs_list:
+        if job.status == "completed" and job.result_data is not None and not job.result_data.empty:
+            all_results_dfs.append(job.result_data)
+            total_processed_rows += len(job.result_data)
+        elif job.status == "failed" and job.chunk_df is not None and not job.chunk_df.empty:
+            # This job failed, but we want to include its original rows with an error message
+            # when not halting on failure.
+            failed_chunk_df_copy = job.chunk_df.copy()
+            failed_chunk_df_copy[response_field_name] = job.error_message 
+            all_results_dfs.append(failed_chunk_df_copy)
+            logger.info(f"Job {job.chunk_id_str} failed. Original data with error message added to final output.")
+        elif job.status == "error" and job.chunk_df is not None and not job.chunk_df.empty: # e.g. prep error
+            # Also include rows for jobs that had errors during BatchJob preparation phase, if they have a chunk_df
+            error_chunk_df_copy = job.chunk_df.copy()
+            error_chunk_df_copy[response_field_name] = job.error_message or "Error during job preparation"
+            all_results_dfs.append(error_chunk_df_copy)
+            logger.info(f"Job {job.chunk_id_str} had preparation error. Original data with error message added to final output.")
+
+
+    if not all_results_dfs:
         logger.error(f"[FAILURE] All chunks failed or yielded no results for {os.path.basename(original_filepath)}. No aggregated file produced.")
         chunked_dir_path = os.path.join(os.path.dirname(original_filepath), '_chunked')
         if os.path.exists(chunked_dir_path):
             prune_chunked_dir(chunked_dir_path)
         return None
+
+    combined_df = pd.concat(all_results_dfs, ignore_index=True)
+    logger.success(f"Results aggregated for {os.path.basename(original_filepath)}. {total_processed_rows} rows processed.")
+    # Ensure original 'id' column is present if 'custom_id' was used
+    if 'custom_id' in combined_df.columns and 'id' not in combined_df.columns:
+        combined_df['id'] = combined_df['custom_id']
+        logger.debug(f"Added 'id' column to aggregated results, copied from 'custom_id'.")
+    
+    chunked_dir_path = os.path.join(os.path.dirname(original_filepath), '_chunked')
+    if os.path.exists(chunked_dir_path): 
+        prune_chunked_dir(chunked_dir_path)
+    return combined_df
 
 def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
     jobs = _generate_chunk_job_objects(
@@ -379,7 +406,7 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
                     logger.warning(f"Cancelled {cancelled_count} pending chunk jobs due to halt on failure for {os.path.basename(filepath)}.")
         
         logger.info(f"All chunks processed for {os.path.basename(filepath)}. Aggregating results...")
-        return _pfc_aggregate_and_cleanup(completed_jobs, filepath)
+        return _pfc_aggregate_and_cleanup(completed_jobs, filepath, response_field)
     finally:
         if jobs:
             pass

@@ -1,6 +1,6 @@
 [project]
 name = "batchgrader"
-version = "0.4.0"
+version = "0.4.3"
 description = "Simple cli/config based batch job tool for OpenAI API."
 authors = [
     {name = "afunyun", email = "github@afjaun.mozmail.com"}
@@ -41,7 +41,11 @@ dependencies = [
     "typing-inspection==0.4.0",
     "tzdata==2025.2",
     "urllib3==2.4.0",
-    "rich>=14.0.0"
+    "rich>=14.0.0",
+    "pytest-mock (>=3.14.0,<4.0.0)",
+    "pytest (>=8.3.5,<9.0.0)",
+    "asyncio (>=3.4.3,<4.0.0)",
+    "pytest-asyncio (>=0.26.0,<0.27.0)"
 ]
 
 [build-system]

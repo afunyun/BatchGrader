@@ -36,6 +36,12 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
     import pandas as pd
     import os
 
+    print(f"[DEBUG_SPLITTER_ENTRY] Initial force_chunk_count: {force_chunk_count}, token_limit: {token_limit}, row_limit: {row_limit}") # Debug print at entry
+    if logger:
+        logger.debug(f"Splitting file: {input_path if input_path else 'DataFrame input'}, Token Limit: {token_limit}, Row Limit: {row_limit}, Force Chunks: {force_chunk_count}")
+    else:
+        print(f"[DEBUG] Splitting file: {input_path if input_path else 'DataFrame input'}, Token Limit: {token_limit}, Row Limit: {row_limit}, Force Chunks: {force_chunk_count}")
+
     current_ext = None
     current_base_name = None
 
@@ -109,6 +115,7 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
     token_counts = []
     
     if force_chunk_count is not None and force_chunk_count > 1:
+        print(f"[DEBUG_SPLITTER] Entered force_chunk_count block. force_chunk_count = {force_chunk_count}, input_path = {input_path}") # Debug print
         if logger:
             logger.event(f"Chunking mode: force_chunk_count={force_chunk_count}")
         else:
