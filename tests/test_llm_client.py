@@ -1,24 +1,21 @@
 import pytest
-from unittest.mock import MagicMock # For more complex mocking if needed, though mocker.patch often suffices
-from src.llm_client import LLMClient # Assuming LLMClient is in src/llm_client.py
-from src.logger import logger # Import the pre-configured logger instance
+from unittest.mock import MagicMock
+from src.llm_client import LLMClient
+from src.logger import logger
 
 @pytest.fixture
 def llm_client_instance(mocker):
     """
     Provides an LLMClient instance with a mocked OpenAI client.
     """
-    # Mock the OpenAI class itself so it doesn't try to init with a real key
     mock_openai_class = mocker.patch('openai.OpenAI') 
     mock_openai_instance = MagicMock()
     mock_openai_class.return_value = mock_openai_instance
     
-    # Define test values for api_key and model
     test_api_key = "fake_test_key"
-    test_model = "gpt-3.5-turbo" # Example model, adjust if needed for tests
+    test_model = "gpt-3.5-turbo"
     
     client = LLMClient(api_key=test_api_key, model=test_model, logger=logger)
-    # The client.client will now be our mock_openai_instance from the patch
     return client
 
 def test_llm_parse_batch_output_file_success(llm_client_instance, mocker):

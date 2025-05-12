@@ -114,9 +114,9 @@ class LLMClient:
                 if not custom_id:
                     self.logger.warning(f"Warning: Found item in output without custom_id: {item}")
                     continue 
-                # A successful item has a 'response' field and no 'error' field.
+                
                 if item.get("response") and not item.get("error"):
-                    resp = item.get("response") # get the response object
+                    resp = item.get("response") 
                     try:
                         content = resp["body"]["choices"][0]["message"]["content"]
                         item_results_map[custom_id] = content
@@ -134,7 +134,7 @@ class LLMClient:
             return item_results_map
         except Exception as e_file:
             self.logger.error(f"Critical error retrieving or parsing batch output file {output_file_id}: {e_file}", exc_info=True)
-            # Raise an error to be caught by the caller, indicating the whole file processing failed.
+            
             raise IOError(f"Failed to retrieve or parse batch output file {output_file_id}") from e_file
 
     def _llm_retrieve_batch_error_file(self, error_file_id):
@@ -147,7 +147,7 @@ class LLMClient:
 
     def _process_batch_outputs(self, batch_job_obj, df_with_custom_ids):
         results_map = {}
-        llm_output_column_name = 'llm_score' # Consider making this configurable or derived if needed
+        llm_output_column_name = 'llm_score' 
 
         output_file_id = getattr(batch_job_obj, 'output_file_id', None)
         error_file_id = getattr(batch_job_obj, 'error_file_id', None)
@@ -158,9 +158,9 @@ class LLMClient:
                 try:
                     parsed_item_results = self._llm_parse_batch_output_file(output_file_id)
                     results_map.update(parsed_item_results)
-                except IOError as e_parse_file: # Catching specific IOError raised by helper
+                except IOError as e_parse_file: 
                     self.logger.error(f"Failed to process batch output file {output_file_id} due to: {e_parse_file}")
-                    # Populate all custom_ids with a generic error for this case
+                    
                     for cid in df_with_custom_ids['custom_id']:
                         results_map[cid] = "Error: Failed to retrieve/parse batch output file"
             else:
@@ -176,17 +176,17 @@ class LLMClient:
             for cid in df_with_custom_ids['custom_id']:
                 results_map[cid] = f"Error: Batch job status - {batch_job_obj.status}"
         
-        # Ensure all custom_ids from the input df have an entry in results_map before mapping
-        # This handles cases where an id might be in df_with_custom_ids but not in a successfully parsed output file
-        # (though _llm_parse_batch_output_file should cover all items it finds, or the IOError handles global failure)
+        
+        
+        
         for cid in df_with_custom_ids['custom_id']:
             if cid not in results_map:
                 self.logger.warning(f"Custom ID {cid} not found in parsed batch results, marking as error.")
                 results_map[cid] = "Error: Result not found in batch output"
 
         df_with_custom_ids[llm_output_column_name] = df_with_custom_ids['custom_id'].map(results_map)
-        # The .fillna from before might be redundant if the loop above covers all missing cids.
-        # However, map might produce NaNs if a key is genuinely missing and not caught by loop, so fillna is a good safeguard.
+        
+        
         df_with_custom_ids[llm_output_column_name] = df_with_custom_ids[llm_output_column_name].fillna("Error: No result found for custom_id (fallback)")
         return df_with_custom_ids
 
@@ -196,15 +196,15 @@ class LLMClient:
         Returns the processed DataFrame with results.
         """
 
-        # Mock logic for TEST_KEY_FAIL_CONTINUE
+        
         if self.api_key == "TEST_KEY_FAIL_CONTINUE":
             if base_filename_for_tagging in ["chunk_with_failure_chunk_2", "chunk_with_failure_chunk_4"]:
                 self.logger.info(f"Simulating failure for chunk: {base_filename_for_tagging} due to TEST_KEY_FAIL_CONTINUE")
                 raise SimulatedChunkFailureError(f"Simulated failure for {base_filename_for_tagging}")
-            # For other chunks with this key, simulate success without calling API
-            # by returning the input df with a dummy result column
+            
+            
             self.logger.info(f"Simulating success for chunk: {base_filename_for_tagging} due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)")
-            # Ensure the expected output column exists, even if just with dummy data
+            
             llm_output_column_name = config.get('llm_output_column_name', 'llm_response')
             df_with_ids = df.copy()
             if 'custom_id' not in df_with_ids.columns:

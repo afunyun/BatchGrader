@@ -4,10 +4,10 @@ Specifically for batch_runner.py but could theoretically be used for other stuff
 
 Usage (from batch_runner.py):
     from input_splitter import split_file_by_token_limit
-    # Example usage:
-    # output_files = split_file_by_token_limit(
-    #     input_path, token_limit, count_tokens_fn, response_field,
-    #     row_limit=row_limit, output_dir=..., file_prefix=...)
+    
+    
+    
+    
 
 Configurable via config.yaml:
     split_token_limit: int (default: 500000)
@@ -41,32 +41,32 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
 
     if _original_ext:
         current_ext = _original_ext
-        # In recursive calls, file_prefix is expected to define the base name structure for sub-chunks
+        
         if not file_prefix:
             if logger: logger.error("file_prefix must be provided in recursive calls when _original_ext is set.")
             print("[ERROR] file_prefix must be provided in recursive calls.")
             return [], []
-        current_base_name = file_prefix # file_prefix becomes the base for this chunk's name
+        current_base_name = file_prefix 
     elif input_path:
         current_ext = os.path.splitext(input_path)[1].lower()
         current_base_name = file_prefix or os.path.splitext(os.path.basename(input_path))[0]
     else:
-        # This state (no input_path and no _original_ext) is problematic.
-        # If df is also None, it's a fatal error. If df is provided, we're missing file type info.
+        
+        
         if df is None:
             if logger: logger.error("Cannot determine file type or name: input_path is None, _original_ext is not set, and df is None.")
             print("[ERROR] Cannot determine file type or name: insufficient information.")
             return [], []
         else:
-            # This implies df was passed directly on the first call without input_path or an explicit extension.
-            # This scenario is not fully supported for determining output file type without an explicit extension.
+            
+            
             if logger: logger.error("Cannot determine output file type: df provided without input_path or _original_ext.")
             print("[ERROR] Cannot determine output file type for provided DataFrame without input_path or explicit original extension.")
             return [], []
 
     if df is not None:
         loaded_df = df
-    else: # df is None, load from input_path
+    else: 
         if not input_path or not os.path.exists(input_path):
             if logger: logger.error(f"Input file not found: {input_path}")
             else: print(f"[ERROR] Input file not found: {input_path}")
@@ -89,10 +89,10 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
         return [], []
 
     if output_dir is None:
-        if input_path: # Can only default output_dir if input_path was given
+        if input_path: 
             base_input_dir = os.path.dirname(input_path)
             output_dir = os.path.join(base_input_dir, '_chunked')
-        else: # Cannot determine a default output_dir if no input_path
+        else: 
             if logger: logger.error("output_dir is None and cannot be defaulted as input_path was not provided.")
             print("[ERROR] output_dir must be specified when input_path is not provided.")
             return [], []
@@ -102,14 +102,12 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
     if not os.path.exists(keep_path):
         with open(keep_path, 'w', encoding='utf-8') as f:
             f.write('')
-
-    # Ensure current_base_name is just the name part for file construction, especially if derived from file_prefix
+            
     current_base_name = os.path.basename(current_base_name) 
-
     total_rows = len(loaded_df)
     output_files = []
     token_counts = []
-
+    
     if force_chunk_count is not None and force_chunk_count > 1:
         if logger:
             logger.event(f"Chunking mode: force_chunk_count={force_chunk_count}")
@@ -135,17 +133,17 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
                 recursive_file_prefix = f"{current_base_name}_part{part_num}_split"
                 
                 chunk_out_files, chunk_token_counts = split_file_by_token_limit(
-                    input_path=None, # No input_path for recursive calls with df
+                    input_path=None, 
                     token_limit=token_limit,
                     count_tokens_fn=count_tokens_fn,
                     response_field=response_field,
-                    row_limit=None, # Row limit is not applied in recursive token-based splits
+                    row_limit=None, 
                     output_dir=output_dir,
                     file_prefix=recursive_file_prefix,
-                    force_chunk_count=None, # Not applicable for recursive splits
+                    force_chunk_count=None, 
                     logger=logger,
                     df=chunk if not chunk.empty else None,
-                    _original_ext=current_ext # Pass the original extension
+                    _original_ext=current_ext 
                 ) if not chunk.empty else ([], [])
                 temp_output_files.extend(chunk_out_files)
                 temp_token_counts.extend(chunk_token_counts)
@@ -153,7 +151,7 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
                 out_path = os.path.join(output_dir, f"{current_base_name}_part{part_num}{current_ext}")
                 if current_ext == '.csv':
                     chunk.to_csv(out_path, index=False)
-                else: # .jsonl or .json
+                else: 
                     chunk.to_json(out_path, orient='records', lines=(current_ext=='.jsonl'))
                 temp_output_files.append(out_path)
                 temp_token_counts.append(chunk_tokens)
@@ -164,15 +162,11 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
         if logger: logger.event(event_msg)
         else: print(f"[EVENT] {event_msg}")
         return output_files, token_counts
-
-    # Logic for splitting by token_limit or row_limit (not force_chunk_count)
-    # This part remains largely the same but uses current_base_name and current_ext
-    # ... (ensure all references to base_name and ext are updated to current_base_name and current_ext)
-
+    
     current_tokens = 0
     current_rows = []
     part_num = 1
-
+    
     for idx, row in loaded_df.iterrows():
         row_tokens = count_tokens_fn(row) if count_tokens_fn else 0
         if ((token_limit is not None and current_tokens + row_tokens > token_limit) or
