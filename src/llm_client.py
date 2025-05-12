@@ -9,7 +9,7 @@ from src.token_tracker import log_token_usage_event
 from src.logger import logger
 from datetime import datetime
 from rich.console import Console
-from config_loader import load_config
+from .config_loader import load_config
 
 config = load_config()
 
