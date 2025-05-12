@@ -19,11 +19,6 @@
   - Fixed output file path logic: All test outputs now go to `tests/output/` relative to project root, never `tests/tests/output`. Output naming now matches runner expectations (e.g., `_results.csv`, `_forced_results.csv`).
   - CLI "stuttering" (repeated print/log output during polling) eliminated by using a single live-updating `RichJobTable` for all job status/progress.
 
-- **Rationale:**
-  - Ensures codebase hygiene and prevents confusion about dependencies.
-  - Guarantees test runner always finds outputs in the expected location and naming convention.
-  - Greatly improves UX and traceability during batch runs by consolidating status/progress into a clean, updating CLI table.
-
 - **Implementation:**
   - `src/batch_runner.py`: Cleaned import block; patched output directory logic for test runs; refactored CLI output to use `RichJobTable`.
   - `src/llm_client.py`, `src/batch_job.py`: Updated as needed for table-based status.
@@ -33,11 +28,6 @@
 - **Artifacts:**
   - Source: `src/batch_runner.py`, `src/llm_client.py`, `src/batch_job.py`, `src/rich_display.py`
   - Docs: This changelog, updated code comments
-
-- **User Impact:**
-  - Developers can trust import order and dependency hygiene.
-  - Test and CI runners will never fail due to misplaced output files.
-  - CLI is now clean, modern, and easy to monitor during long-running batch jobs.
 
 ---
 
