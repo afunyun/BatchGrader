@@ -4,9 +4,8 @@
 
 **0.4.0 (2025-05-11):**
 
-- tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
-
-Desperately searched for loggers being manually shut down but none were found so moved on from that endeavor.
+- Tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
+- No evidence of logger state being manually manipulated so no issues there.
 
 **0.3.3 (2025-05-11):**
 
