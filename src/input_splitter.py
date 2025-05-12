@@ -36,11 +36,10 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
     import pandas as pd
     import os
 
-    print(f"[DEBUG_SPLITTER_ENTRY] Initial force_chunk_count: {force_chunk_count}, token_limit: {token_limit}, row_limit: {row_limit}") # Debug print at entry
     if logger:
         logger.debug(f"Splitting file: {input_path if input_path else 'DataFrame input'}, Token Limit: {token_limit}, Row Limit: {row_limit}, Force Chunks: {force_chunk_count}")
     else:
-        print(f"[DEBUG] Splitting file: {input_path if input_path else 'DataFrame input'}, Token Limit: {token_limit}, Row Limit: {row_limit}, Force Chunks: {force_chunk_count}")
+        pass
 
     current_ext = None
     current_base_name = None
@@ -115,11 +114,10 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
     token_counts = []
     
     if force_chunk_count is not None and force_chunk_count > 1:
-        print(f"[DEBUG_SPLITTER] Entered force_chunk_count block. force_chunk_count = {force_chunk_count}, input_path = {input_path}") # Debug print
         if logger:
             logger.event(f"Chunking mode: force_chunk_count={force_chunk_count}")
         else:
-            print(f"[EVENT] chunking_mode: force_chunk_count={force_chunk_count}")
+            pass
         n_rows = len(loaded_df)
         chunk_sizes = [n_rows // force_chunk_count] * force_chunk_count
         for i in range(n_rows % force_chunk_count):
@@ -135,7 +133,7 @@ def split_file_by_token_limit(input_path, token_limit=None, count_tokens_fn=None
                 if logger:
                     logger.warning(f"Chunk {part_num} ({len(chunk)} rows) for '{current_base_name}' exceeds token limit ({chunk_tokens} > {token_limit}), recursively splitting.")
                 else:
-                    print(f"[WARN] Chunk {part_num} ({len(chunk)} rows) for '{current_base_name}' exceeds token limit ({chunk_tokens} > {token_limit}), recursively splitting.")
+                    pass
                 
                 recursive_file_prefix = f"{current_base_name}_part{part_num}_split"
                 
