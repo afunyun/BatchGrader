@@ -2,17 +2,27 @@
 
 ## Last updated: 2025-05-11
 
-**0.4.0 (2025-05-11):** tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
+**0.4.0 (2025-05-11):**
+
+- tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
 
 Desperately searched for loggers being manually shut down but none were found so moved on from that endeavor.
 
-**0.3.3 (2025-05-11):** Import Cleanup & CLI Table Fixes: nuked unused imports, pointed all test outputs properly at tests/output/, and swapped prints to console for RichJobTable live-updating wobbly progress bar. Forgot to give a version number so it gets a fake one 0.3.3.
+**0.3.3 (2025-05-11):**
 
-**0.3.2 (2025-05-11):** now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don’t lose nested settings.
+- Import Cleanup & CLI Table Fixes: nuked unused imports, pointed all test outputs properly at tests/output/, and swapped prints to console for RichJobTable live-updating wobbly progress bar. Forgot to give a version number so it gets a fake one 0.3.3.
 
-**0.3.1 (2025-05-11):** chunking finally works and storage paths have been cleaned.
+**0.3.2 (2025-05-11):**
 
-**0.3.0 (2025-05-11):** ditched raw prints for rich console output with colors & emoji, added a summary table for jobs/tokens/cost, and beefed up logging.
+- now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don’t lose nested settings.
+
+**0.3.1 (2025-05-11):**
+
+- chunking finally works and storage paths have been cleaned.
+
+**0.3.0 (2025-05-11):**
+
+- ditched raw prints for rich console output with colors & emoji, added a summary table for jobs/tokens/cost, and beefed up logging.
 
 ## Overview
 
