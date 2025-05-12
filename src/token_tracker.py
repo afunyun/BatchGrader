@@ -22,6 +22,8 @@ Cost is calculated using model pricing from docs/pricing.csv (per 1M tokens, inp
 import os
 import json
 import csv
+from src.config_loader import load_config
+config = load_config()
 from datetime import datetime
 from typing import Optional, List, Dict
 
@@ -35,9 +37,14 @@ def _get_api_key_prefix(api_key):
     return api_key[:10] + '**********'
 
 def _load_pricing():
-    pricing = {}
+    """
+    Load model pricing from pricing.csv.
+    Raises FileNotFoundError if the file is missing.
+    Returns a dict of model -> {input, output} pricing.
+    """
     if not os.path.exists(PRICING_CSV_PATH):
-        return pricing
+        raise FileNotFoundError(f"Pricing file not found: {PRICING_CSV_PATH}")
+    pricing = {}
     with open(PRICING_CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:

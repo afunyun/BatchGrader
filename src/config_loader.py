@@ -98,7 +98,8 @@ def load_config(config_path=None):
     Loads the batch grading configuration from the specified config YAML file.
     If config_path is None, loads from config/config.yaml.
     Auto-creates config, prompts, & examples files with defaults if missing.
-    Prefers environment variable for API key since that's secure or some shit.
+    Prefers environment variable for API key since that's secure.
+    Performs a DEEP MERGE of user config over DEFAULT_CONFIG, so nested dictionaries are merged recursively (not overwritten).
     Returns:
         dict: Configuration parameters.
     Raises RuntimeError if it encounters a badly formatted config file.
@@ -116,8 +117,8 @@ def load_config(config_path=None):
         if config is None:
             config = DEFAULT_CONFIG.copy()
         else:
-            merged = DEFAULT_CONFIG.copy()
-            merged.update(config)
+            from src.utils import deep_merge_dicts
+            merged = deep_merge_dicts(DEFAULT_CONFIG, config)
             config = merged
     except Exception as e:
         raise RuntimeError(f"Error loading config file {config_path}: {e}")

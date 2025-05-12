@@ -4,6 +4,7 @@ Cost Estimator for OpenAI API batch pricing.
 import csv
 import os
 from typing import Dict, Tuple
+from src.config_loader import load_config
 
 class CostEstimator:
     """

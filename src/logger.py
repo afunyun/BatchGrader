@@ -8,6 +8,7 @@ import sys
 import os
 import logging
 from datetime import datetime
+from src.config_loader import load_config
 from rich.logging import RichHandler
 
 SUCCESS_LEVEL_NUM = 25

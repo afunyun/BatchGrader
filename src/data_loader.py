@@ -1,3 +1,4 @@
+from src.config_loader import load_config
 import pandas as pd
 
 def load_data(filepath):

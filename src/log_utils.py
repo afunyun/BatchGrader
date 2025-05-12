@@ -15,9 +15,12 @@ Configurable constants:
 import os
 import shutil
 from datetime import datetime
+from src.config_loader import load_config
 
-MAX_LOGS = 50
-MAX_ARCHIVE = 50
+config = load_config()
+
+MAX_LOGS = config['max_logs']
+MAX_ARCHIVE = config['max_archive']
 
 
 def prune_logs_if_needed(log_dir, archive_dir, max_logs=MAX_LOGS, max_archive=MAX_ARCHIVE):

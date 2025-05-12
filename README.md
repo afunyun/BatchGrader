@@ -2,6 +2,11 @@
 
 ## Last updated: 2025-05-11
 
+### [0.3.2] (2025-05-11)
+
+- **Enforced required pricing.csv:** BatchGrader now fails fast if docs/pricing.csv is missing, raising FileNotFoundError. Pricing is now a hard requirement for all cost estimation and token tracking. Because we said so sucka.
+- **Deep merge config enhancement:** User config files are now recursively merged with defaults, preventing accidental loss of nested settings
+
 ### [0.3.1] (2025-05-11)
 
 - Fixed chunking (whoops)
@@ -433,4 +438,4 @@ BatchGrader/
 - All logs go to `output/logs/` (production) or `tests/logs/` (tests), with `.keep` files to ensure directory presence.
 - Directory names are singular and standardized.
 
-![architecture](docs/architecture.png)
+![architecture](docs\diagram_dark_bg.png)

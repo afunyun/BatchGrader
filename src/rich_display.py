@@ -14,6 +14,8 @@ Columns:
     - Progress
     - Error Info
 """
+from src.config_loader import load_config
+config = load_config()
 from rich.live import Live
 from rich.table import Table
 from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
