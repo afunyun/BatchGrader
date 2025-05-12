@@ -13,15 +13,15 @@
 
 **0.3.2 (2025-05-11):**
 
-- now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don’t lose nested settings.
+- Now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don’t lose nested settings.
 
 **0.3.1 (2025-05-11):**
 
-- chunking finally works and storage paths have been cleaned.
+- Chunking finally works and storage paths have been cleaned.
 
 **0.3.0 (2025-05-11):**
 
-- ditched raw prints for rich console output with colors & emoji, added a summary table for jobs/tokens/cost, and beefed up logging.
+- Ditched raw prints for rich console output with colors & emoji, added a summary table for jobs/tokens/cost, and beefed up logging.
 
 ## Overview
 
