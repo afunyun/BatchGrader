@@ -2,13 +2,13 @@
 
 ## Last updated: 2025-05-11
 
-## [0.4.0] (2025-05-11) Major Reliability, Chunking, and Test Improvements
+## [0.4.0] (2025-05-11) Code Review - Reliability, Chunking, and Test Improvements///fixes since they were bigly broken in some ways
 
-- **Strict token limit enforcement:** Chunking now recursively splits any chunk that exceeds the configured token limit, guaranteeing API compliance and preventing silent failures.
-- **Examples file existence check restored:** BatchGrader now fails fast with a clear error if the required examples file is missing, improving user experience and reliability.
-- **Robust test runner:** Test runner prunes output/log files before each run, preventing auto-renaming issues. Test cases and data are now aligned for meaningful regression detection.
-- **Directory and config hygiene:** Output and log files are always written to the correct standardized locations, and directory conventions are strictly followed for both production and tests.
-- **Documentation and changelog updates:** All major changes are now documented in the project journal and changelog for traceability.
+- **Token limit adherence:** Ensures that all chunks conform to the token limit, preventing API errors.
+- **Examples file check:** Provides clear error messages if the examples file is not found, enhancing reliability.
+- **Improved test runner:** Cleans up files before tests to avoid naming conflicts and ensures test consistency.
+- **Consistent file management:** Maintains standardized file paths for outputs and logs in production and tests.
+- **Updated documentation:** Reflects all significant changes in the project records for easy reference.
 
 ---
 
