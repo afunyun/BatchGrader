@@ -4,7 +4,10 @@ utils.py - Shared utilities for BatchGrader
 Includes:
 - deep_merge_dicts: Recursively merge two dictionaries (for config merging)
 - ensure_config_files_exist: Creates default config.yaml and prompts.yaml from examples if they don't exist.
+- ensure_config_files_exist: Creates default config.yaml and prompts.yaml from examples if they don't exist.
 """
+import os
+import shutil
 import os
 import shutil
 
