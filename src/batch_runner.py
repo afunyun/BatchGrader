@@ -422,7 +422,7 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
             pass
 
 
-def process_file(filepath):
+def process_file(filepath, output_dir):
     """
     Processes a single input file using the OpenAI Batch API workflow via LLMClient.
     Loads data, prepares batch requests, manages the batch job, processes results, and saves output.
@@ -437,9 +437,9 @@ def process_file(filepath):
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         output_dir = os.path.join(project_root, 'tests', 'output')
     else:
-        output_dir = OUTPUT_DIR
+        output_dir = output_dir
     os.makedirs(output_dir, exist_ok=True)
-    config_force_chunk = config.get('force_chunk_count', 0)
+    config_force_chunk = config.get('force_chunk_count', 0) 
     if 'legacy' in file_root.lower():
         out_suffix = '_results'
     elif config_force_chunk and config_force_chunk > 1:
@@ -605,12 +605,12 @@ def process_file(filepath):
     except Exception as e:
         logger.error(f"An error occurred while processing {filepath}: {e}")
         log_basename = os.path.splitext(filename)[0] + ".log"
-        log_base_path = os.path.join(OUTPUT_DIR, log_basename)
+        log_base_path = os.path.join(output_dir, log_basename)
         if os.path.exists(log_base_path):
             file_root, file_ext = os.path.splitext(log_basename)
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             new_log_filename = f"{file_root}_{timestamp}{file_ext}"
-            log_path = os.path.join(OUTPUT_DIR, new_log_filename)
+            log_path = os.path.join(output_dir, new_log_filename)
             logger.info(f"Log file already exists. Using new filename: {new_log_filename}")
         else:
             log_path = log_base_path
@@ -830,7 +830,7 @@ if __name__ == "__main__":
                         for out_file, tok_count in zip(output_files, token_counts):
                             logger.info(f"Output file: {out_file} | Tokens: {tok_count}")
                 continue
-            ok = process_file(resolved_path)
+            ok = process_file(resolved_path, OUTPUT_DIR)
             if not ok:
                 logger.error(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")
                 break
