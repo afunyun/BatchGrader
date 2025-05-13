@@ -1,6 +1,8 @@
 import yaml
 from pathlib import Path
 import os
+from .utils import ensure_config_files_exist as util_ensure_config_files_exist
+from .logger import logger as global_logger
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / 'config'
 CONFIG_PATH = CONFIG_DIR / 'config.yaml'
@@ -60,27 +62,27 @@ DEFAULT_PROMPTS = {
     )
 }
 
-def ensure_config_files():
+def ensure_config_files(logger):
     '''
-    Ensures dir structure is present and if not, creates a default one. 
-    
+    Ensures dir structure is present and if not, creates a default one for input, output, and examples.
+    Also ensures config.yaml and prompts.yaml are created from .example files if missing.
     '''
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     input_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['input_dir']).resolve()
     output_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['output_dir']).resolve()
     examples_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['examples_dir']).resolve()
+
     input_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     examples_dir.parent.mkdir(parents=True, exist_ok=True)
+
     if not examples_dir.exists():
         with open(examples_dir, 'w', encoding='utf-8') as f:
             f.write(DEFAULT_EXAMPLES_TEXT)
-    if not CONFIG_PATH.exists():
-        with open(CONFIG_PATH, 'w') as f:
-            yaml.safe_dump(DEFAULT_CONFIG, f)
-    if not PROMPTS_PATH.exists():
-        with open(PROMPTS_PATH, 'w') as f:
-            yaml.safe_dump(DEFAULT_PROMPTS, f)
+        logger.info(f"Default examples file created at '{examples_dir}'.")
+
+    # Let the utility function handle config.yaml and prompts.yaml from .example files
+    util_ensure_config_files_exist(logger)
 
 def is_examples_file_default(examples_path):
     """
@@ -105,6 +107,8 @@ def load_config(config_path=None):
     Raises RuntimeError if it encounters a badly formatted config file.
     Raises ValueError if it encounters a missing config file.
     """
+    ensure_config_files(global_logger) # Ensure all necessary files and dirs are set up
+
     if config_path is None:
         config_path = CONFIG_PATH
     else:

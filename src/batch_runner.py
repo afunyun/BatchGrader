@@ -99,7 +99,7 @@ def _generate_chunk_job_objects(original_filepath: str,
                     chunk_df = chunk_df.rename(columns={'id': 'custom_id'})
                     logger.info(f"Renamed 'id' to 'custom_id' for chunk: {os.path.basename(chunk_path)}")
                 else:
-                    logger.warning(f"Neither 'custom_id' nor 'id' column found in chunk: {os.path.basename(chunk_path)}. This may cause issues if LLMClient requires an ID.")
+                    logger.warning(f"Neither 'custom_id' nor 'id' column found in chunk: {os.path.basename(chunk_path)}. This might cause issues if LLMClient requires an ID.")
             
             if 'custom_id' in chunk_df.columns:
                 if not pd.api.types.is_string_dtype(chunk_df['custom_id']):
