@@ -222,13 +222,13 @@ If neither `--count-tokens` nor `--split-tokens` is specified, the system runs t
 
 2. **Run the Batch Grader:**
 
-Make sure you are in the BatchGrader directory
+  Make sure you are in the BatchGrader directory
 
-```python
-python -m src.batch_runner [args]
-```
+  ```python
+  python -m src.batch_runner [args]
+  ```
 
-- The runner will process each file in the input directory, submit a batch job, and save results in the output directory once received. It will check for a completed job based on the specified value in the config. See notes below
+  - The runner will process each file in the input directory, submit a batch job, and save results in the output directory once received. It will check for a completed job based on the specified value in the config. See notes below
 
 3. **Check Output:**
    - Results are in output/ with an added `llm_score` column. Errors are prefixed with `ERROR_`.
