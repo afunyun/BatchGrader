@@ -71,48 +71,43 @@ All configuration is managed via simple YAML.
 
 **I am on Windows 11. I have not tested this on linux, but I have no reason to believe it wouldn't work just fine. You may need to modify the setup for bash rather than powershell.**
 
-1. **Prerequisites:**
-   - Python 3.7+
-   - Recommended: uv (preferred for requirements.txt) or pip.
+1. **Prerequisites**
+    - Python 3.7+
+    - Recommended: `uv` (preferred for `requirements.txt`) or `pip`.
 
 2. **Virtual Environment (Recommended)**
+    - Clone the repo:
 
-   - Clone the repo:
+        ```powershell
+        git clone https://github.com/afunyun/BatchGrader.git
+        cd BatchGrader
+        ```
 
-     ```powershell
-     git clone https://github.com/afunyun/BatchGrader.git
-     cd BatchGrader
-     ```
+    - "Optional but not running in a venv is asking for a world of hurt, promise" Sync and activate the virtual environment (exact script may vary based on your system):
 
-   - (Optional but encouraged) Sync and activate virtual environment (exact script may vary based on your system):
+        ```powershell
+        uv sync
+        .venv\Scripts\activate.ps1
+        ```
 
-     ```powershell
-     uv sync
-     .venv\Scripts\activate.ps1 
-     ```
+        If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length from every hair on their body. Please don't do that.
+    - **Dependency Management** (`uv` + `requirements.txt` is canonical)
+        - Uses `requirements.txt` (managed with `uv` or `pip`). `pyproject.toml` is for compatibility only and not actively maintained.
+        - **Installing dependencies:**
 
-     If you don't do this, 3-4 people (random, selected from global population) suddenly lose 3 mm of length from every hair of their body. Don't do that.
-
-   - **Dependency Management (uv + requirements.txt is Canonical)**
-
-     - Uses requirements.txt (managed with uv or pip). pyproject.toml is for compatibility only and not actively maintained.
-
-     **Installing Dependencies:**
-
-     ```powershell
-     uv pip install -r requirements.txt
-     ```
+            ```powershell
+            uv pip install -r requirements.txt
+            ```
 
 3. **Usage**
-  Always make sure your .venv is active - if it's not, something WILL break almost guaranteed.
+    - Always make sure your `.venv` is active—if it's not, something *will* break, almost guaranteed.
+    - Rename `config/config.yaml.example` to `config/config.yaml` and fill in the values.
+      (If you get a config loading error, check that these files are in the expected `/config` location.)
+    - Then run:
 
-  Rename config/config.yaml.example to config/config.yaml and fill in the values. (Sometimes I break the default loading of config.yaml, so if you get an error, check that these files are in the expected /config location)
-
-  Then run:
-
-```powershell
-python -m src.batch_runner [args]
-```
+        ```powershell
+        python -m src.batch_runner [args]
+        ```
 
 This of course is just to run the batch runner with nothing else. See below for more advanced usage.
 
@@ -218,20 +213,19 @@ If neither `--count-tokens` nor `--split-tokens` is specified, the system runs t
 1. **Prepare Input Data:**
    - Place your input files (CSV, JSON, or JSONL) in the `input/` directory.
    - Ensure your files contain the field specified by `response_field` in `config.yaml`.
-   - Optionally, if you need to provide examples in the prompts, you may add examples
+   - Optionally, if you need to provide examples in the prompts, you may add examples.
 
 2. **Run the Batch Grader:**
+   - Make sure you are in the BatchGrader directory.
 
-  Make sure you are in the BatchGrader directory
+   ```bash
+   python -m src.batch_runner [args]
+   ```
 
-  ```python
-  python -m src.batch_runner [args]
-  ```
-
-  - The runner will process each file in the input directory, submit a batch job, and save results in the output directory once received. It will check for a completed job based on the specified value in the config. See notes below
+   - The runner will process each file in the input directory, submit a batch job, and save results in the output directory once received. It will check for a completed job based on the specified value in the config. See notes below.
 
 3. **Check Output:**
-   - Results are in output/ with an added `llm_score` column. Errors are prefixed with `ERROR_`.
+   - Results are in `output/` with an added `llm_score` column. Errors are prefixed with `ERROR_`.
 
 #### Rate Limits
 
