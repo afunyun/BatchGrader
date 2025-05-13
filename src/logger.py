@@ -8,7 +8,6 @@ import sys
 import os
 import logging
 from datetime import datetime
-from src.config_loader import load_config
 from rich.logging import RichHandler
 
 SUCCESS_LEVEL_NUM = 25
@@ -20,17 +19,26 @@ class BatchGraderLogger:
             os.makedirs(log_dir)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.log_file = os.path.join(log_dir, f'batchgrader_run_{timestamp}.log')
-        self.logger = logging.getLogger(f'batchgrader_{timestamp}')
-        self.logger.setLevel(logging.INFO)
-        console_handler = RichHandler(show_time=True, show_level=True, show_path=False, rich_tracebacks=True)
-        console_handler.setLevel(logging.INFO)
-        file_handler = logging.FileHandler(self.log_file, encoding='utf-8')
-        file_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-        file_handler.setFormatter(file_formatter)
-        file_handler.setLevel(logging.INFO)
-        self.logger.addHandler(console_handler)
-        self.logger.addHandler(file_handler)
-        self.info(f"BatchGrader run started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        self.logger = logging.getLogger('BatchGrader')
+
+        if not self.logger.hasHandlers():
+            self.logger.setLevel(logging.INFO)
+            
+            console_handler = RichHandler(show_time=True, show_level=True, show_path=False, rich_tracebacks=True)
+            console_handler.setLevel(logging.INFO)
+            
+            file_handler = logging.FileHandler(self.log_file, encoding='utf-8')
+            file_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+            file_handler.setFormatter(file_formatter)
+            file_handler.setLevel(logging.INFO)
+            
+            self.logger.addHandler(console_handler)
+            self.logger.addHandler(file_handler)
+            self.info(f"BatchGrader run started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    def get_logger(self):
+        return self.logger
 
     def info(self, msg, *args, **kwargs):
         self.logger.info(msg, *args, **kwargs)

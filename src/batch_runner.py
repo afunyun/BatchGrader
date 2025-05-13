@@ -99,7 +99,7 @@ def _generate_chunk_job_objects(original_filepath: str,
                     chunk_df = chunk_df.rename(columns={'id': 'custom_id'})
                     logger.info(f"Renamed 'id' to 'custom_id' for chunk: {os.path.basename(chunk_path)}")
                 else:
-                    logger.warning(f"Neither 'custom_id' nor 'id' column found in chunk: {os.path.basename(chunk_path)}. This may cause issues if LLMClient requires an ID.")
+                    logger.warning(f"Neither 'custom_id' nor 'id' column found in chunk: {os.path.basename(chunk_path)}. This might cause issues if LLMClient requires an ID.")
             
             if 'custom_id' in chunk_df.columns:
                 if not pd.api.types.is_string_dtype(chunk_df['custom_id']):
@@ -145,19 +145,17 @@ def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient, r
     Updates batch_job status and results in place.
     Returns the updated batch_job object.
     """
-    # Check if chunk_df is valid before proceeding
     if batch_job.chunk_df is None or batch_job.chunk_df.empty:
-        if batch_job.status != "error": # Don't overwrite existing error status from generation
-             batch_job.status = "error"
-             batch_job.error_message = "Chunk DataFrame is None or empty."
-             batch_job.error_details = "Chunk DataFrame was not loaded or was empty when task started."
-             logger.error(f"[{batch_job.chunk_id_str}] Skipping task execution: {batch_job.error_message}")
-        return batch_job # Return early if no valid data
+        if batch_job.status != "error": # 
+            batch_job.status = "error"
+            batch_job.error_message = "Chunk DataFrame is None or empty."
+            batch_job.error_details = "Chunk DataFrame was not loaded or was empty when task started."
+            logger.error(f"[{batch_job.chunk_id_str}] Skipping task execution: {batch_job.error_message}")
+        return batch_job
 
     try:
-        batch_job.status = "running" # Set status only if we have data to process
+        batch_job.status = "running" 
 
-        # The original check for 'custom_id' can remain, but it's now safe because chunk_df is not None
         if 'custom_id' not in batch_job.chunk_df.columns:
             logger.warning(f"[{batch_job.chunk_id_str}] 'custom_id' column is missing from chunk_df at the start of _execute_single_batch_job_task. This might cause issues with mocks or specific LLMClient implementations.")
 
@@ -171,7 +169,7 @@ def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient, r
             batch_job.result_data = api_result
             batch_job.status = "completed"
             logger.debug(f"[{batch_job.chunk_id_str}] Task completed, result is DataFrame.")
-        elif isinstance(api_result, dict) and ('error' in api_result or 'custom_id_of_failed_item' in api_result): # Check for error indicators
+        elif isinstance(api_result, dict) and ('error' in api_result or 'custom_id_of_failed_item' in api_result): 
             batch_job.status = "failed"
             batch_job.error_message = api_result.get('error_message', api_result.get('error', str(api_result)))
             batch_job.error_details = api_result
@@ -323,11 +321,11 @@ def _pfc_process_completed_future(
     return False 
 
 def _pfc_aggregate_and_cleanup(completed_jobs_list: list[BatchJob], 
-                               original_filepath: str,
-                               response_field_name: str) -> Optional[pd.DataFrame]:
+                                                    original_filepath: str,
+                                                    response_field_name: str) -> Optional[pd.DataFrame]:
     """Aggregates results from completed jobs and cleans up chunked files."""
     all_results_dfs = []
-    total_processed_rows = 0 # This will now count only successfully processed rows for the log message
+    total_processed_rows = 0 
     original_file_stem = Path(original_filepath).stem
 
     for job in completed_jobs_list:
@@ -335,14 +333,10 @@ def _pfc_aggregate_and_cleanup(completed_jobs_list: list[BatchJob],
             all_results_dfs.append(job.result_data)
             total_processed_rows += len(job.result_data)
         elif job.status == "failed" and job.chunk_df is not None and not job.chunk_df.empty:
-            # This job failed, but we want to include its original rows with an error message
-            # when not halting on failure.
             failed_chunk_df_copy = job.chunk_df.copy()
             failed_chunk_df_copy[response_field_name] = job.error_message 
             all_results_dfs.append(failed_chunk_df_copy)
-            logger.info(f"Job {job.chunk_id_str} failed. Original data with error message added to final output.")
-        elif job.status == "error" and job.chunk_df is not None and not job.chunk_df.empty: # e.g. prep error
-            # Also include rows for jobs that had errors during BatchJob preparation phase, if they have a chunk_df
+        elif job.status == "error" and job.chunk_df is not None and not job.chunk_df.empty: 
             error_chunk_df_copy = job.chunk_df.copy()
             error_chunk_df_copy[response_field_name] = job.error_message or "Error during job preparation"
             all_results_dfs.append(error_chunk_df_copy)
@@ -358,7 +352,6 @@ def _pfc_aggregate_and_cleanup(completed_jobs_list: list[BatchJob],
 
     combined_df = pd.concat(all_results_dfs, ignore_index=True)
     logger.success(f"Results aggregated for {os.path.basename(original_filepath)}. {total_processed_rows} rows processed.")
-    # Ensure original 'id' column is present if 'custom_id' was used
     if 'custom_id' in combined_df.columns and 'id' not in combined_df.columns:
         combined_df['id'] = combined_df['custom_id']
         logger.debug(f"Added 'id' column to aggregated results, copied from 'custom_id'.")
