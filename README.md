@@ -6,7 +6,8 @@
 
 - delete the batch_runner.py that was in proj root because that only worked locally with a hack & shouldn't have been in the public repo *facepalm*
 - update run instructions for clarity for this
-
+- fix the entire env setup in general as it got ultra screwy while updating things and we push to production it seems
+- fixed import in rich_display
 
 **0.4.3 (2025-05-12):**
 
@@ -83,11 +84,11 @@ All configuration is managed via simple YAML.
      cd BatchGrader
      ```
 
-   - (Optional but encouraged) Create and activate a virtual environment. I recommend astral-uv:
+   - (Optional but encouraged) Sync and activate virtual environment (exact script may vary based on your system):
 
      ```powershell
-     uv venv batchvenv
-     batchvenv\Scripts\activate
+     uv sync
+     .venv\Scripts\activate.ps1 
      ```
 
      If you don't do this, 3-4 people (random, selected from global population) suddenly lose 3 mm of length from every hair of their body. Don't do that.
@@ -102,6 +103,14 @@ All configuration is managed via simple YAML.
      uv pip install -r requirements.txt
      ```
 
+3. **Usage**
+
+```python
+python -m src.batch_runner [args]
+```
+
+This of course is just to run the batch runner with nothing else. See below for more advanced usage.
+
 ## Dependencies
 
     - `rich`: For live-updating CLI progress/status tables and colorized output.
@@ -112,7 +121,7 @@ All configuration is managed via simple YAML.
     - `pyyaml`: For loading YAML files.
     - Various others in requirements.txt and pyproject.toml - these are the main breaking ones however
 
-3. **Configuration:**
+4. **Configuration:**
 
 - Edit config/config.yaml (API key, paths) and config/prompts.yaml (evaluation prompts).
 
@@ -172,9 +181,9 @@ batch_evaluation_prompt: |
 
 Edit this prompt to match your evaluation criteria. The prompt should instruct the LLM to output only the required result (e.g., a number per line). The defaults are obviously quite lacking, they are not really intended for use other than to be 'functional' (to not cause an error) and an example of what you might want to include. You should elaborate as much as you want, the better your prompt, the better your result.
 
-## Usage
+### Usage
 
-### Command-Line Usage
+#### Command-Line Usage
 
 **05/11/2025 - added the following options for command line arguments, if you wish to count/split inputs before actually submitting them to API:**
 
@@ -219,7 +228,7 @@ python -m src.batch_runner [args]
 3. **Check Output:**
    - Results are in output/ with an added `llm_score` column. Errors are prefixed with `ERROR_`.
 
-## Rate Limits
+#### Rate Limits
 
 - The Batch API has separate rate limits (per-batch up to 50k requests/200MB file, and enqueued prompt tokens per model). It doesn't consume your standard API rate limits.
 - Default token_limit in config.yaml is 2,000,000 TPD (Tier 1); adjust as needed based on your [OpenAI Organization Limits](https://platform.openai.com/settings/organization/limits).
@@ -231,13 +240,13 @@ If you so choose, you can increase/decrease this via the config.yaml:
 token_limit: 2_000_000 #change to whatever your limit is
 ```
 
-## Input/Output Formats
+#### Input/Output Formats
 
 - **CSV:** Must have a header row. The column specified by `response_field` will be used.
 - **JSON:** An array of objects. Each object should have the key specified by `response_field`.
 - **JSONL:** Each line is a JSON object with the key specified by `response_field`.
 
-## Assorted Notes
+#### Assorted Notes
 
 - API Key: Set OPENAI_API_KEY environment variable (recommended) or in config.yaml.
 - Model Availability: Use models compatible with Batch API (see pricing table or OpenAI docs).
