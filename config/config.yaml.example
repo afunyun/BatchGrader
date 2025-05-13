@@ -10,3 +10,6 @@ examples_dir: examples/examples.txt
 token_limit: 2000000
 split_token_limit: 500000   # Max tokens per split file (default ~500k)
 split_row_limit: null       # Max rows per split file (optional, default: unlimited)
+max_logs: 50
+max_archive: 5
+
