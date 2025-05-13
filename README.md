@@ -104,9 +104,11 @@ All configuration is managed via simple YAML.
      ```
 
 3. **Usage**
-Always make sure your .venv is active - if it's not, something WILL break almost guaranteed.
-Rename config/config.yaml.example to config/config.yaml and fill in the values. (Sometimes I break the default loading of config.yaml, so if you get an error, check that these files are in the expected /config location)
-Then run:
+  Always make sure your .venv is active - if it's not, something WILL break almost guaranteed.
+
+  Rename config/config.yaml.example to config/config.yaml and fill in the values. (Sometimes I break the default loading of config.yaml, so if you get an error, check that these files are in the expected /config location)
+
+  Then run:
 
 ```powershell
 python -m src.batch_runner [args]
