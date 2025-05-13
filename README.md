@@ -2,6 +2,12 @@
 
 ## Last updated: 2025-05-12
 
+**0.4.4 (2025-05-12):**
+
+- delete the batch_runner.py that was in proj root because that only worked locally with a hack & shouldn't have been in the public repo *facepalm*
+- update run instructions for clarity for this
+
+
 **0.4.3 (2025-05-12):**
 
 - Fixed pytest.ini_options not being read by pytest.
@@ -202,12 +208,13 @@ If neither `--count-tokens` nor `--split-tokens` is specified, the system runs t
 
 2. **Run the Batch Grader:**
 
-   ```powershell
-   cd src
-   python batch_runner.py
-   ```
+Make sure you are in the BatchGrader directory
 
-   - The runner will process each file in the input directory, submit a batch job, and save results in the output directory once received. It will check for a completed job based on the specified value in the config. See notes below
+```python
+python -m src.batch_runner [args]
+```
+
+- The runner will process each file in the input directory, submit a batch job, and save results in the output directory once received. It will check for a completed job based on the specified value in the config. See notes below
 
 3. **Check Output:**
    - Results are in output/ with an added `llm_score` column. Errors are prefixed with `ERROR_`.
