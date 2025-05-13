@@ -2,6 +2,10 @@
 
 ## Last updated: 2025-05-12
 
+**0.4.5 (2025-05-12):**
+
+- Project version updated to 0.4.5. Continued fixes so cloned repos actually function without generating insanity
+
 **0.4.4 (2025-05-12):**
 
 - delete the batch_runner.py that was in proj root because that only worked locally with a hack & shouldn't have been in the public repo *facepalm*
