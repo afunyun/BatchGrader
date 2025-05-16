@@ -1,7 +1,35 @@
 from pathlib import Path
+import os
+
+
+# Find the project root more reliably
+# This finds the top-level directory that contains the src directory
+def find_project_root() -> Path:
+    """Find the project root directory from the current file."""
+    # Start from the directory of this file and go up until we find the project root
+    current_path = Path(__file__).resolve().parent
+
+    # If this file is in src/, parent is the project root
+    if current_path.name == 'src':
+        return current_path.parent
+
+    # Try to find the parent folders until we reach a folder that looks like the project root
+    # i.e., contains both 'src' and 'tests' directories, or other key project files
+    for parent in [current_path] + list(current_path.parents):
+        # Check if this directory contains expected project root markers
+        if (parent / 'src').exists() and (parent / 'tests').exists():
+            return parent
+        if (parent / 'pyproject.toml').exists() or (parent /
+                                                    'setup.py').exists():
+            return parent
+
+    # If we couldn't find it based on structure, use a fallback based on file location
+    # (removing 'src' from the path)
+    return Path(__file__).resolve().parent.parent
+
 
 # Project root directory
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = find_project_root()
 
 # Default paths for logs and archives relative to project root
 # These are immutable default paths, code should not modify these at runtime

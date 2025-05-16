@@ -5,10 +5,11 @@ import logging
 import yaml
 
 from utils import ensure_config_files_exist as util_ensure_config_files_exist, deep_merge_dicts
+from constants import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
-CONFIG_DIR = Path(__file__).resolve().parents[1] / 'config'
+CONFIG_DIR = PROJECT_ROOT / 'config'
 CONFIG_PATH = CONFIG_DIR / 'config.yaml'
 PROMPTS_PATH = CONFIG_DIR / 'prompts.yaml'
 
@@ -75,10 +76,9 @@ def ensure_config_files(logger):
     Also ensures config.yaml and prompts.yaml are created from .example files if missing.
     '''
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    input_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['input_dir']).resolve()
-    output_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['output_dir']).resolve()
-    examples_dir = (CONFIG_DIR.parent /
-                    DEFAULT_CONFIG['examples_dir']).resolve()
+    input_dir = (PROJECT_ROOT / DEFAULT_CONFIG['input_dir']).resolve()
+    output_dir = (PROJECT_ROOT / DEFAULT_CONFIG['output_dir']).resolve()
+    examples_dir = (PROJECT_ROOT / DEFAULT_CONFIG['examples_dir']).resolve()
 
     input_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)

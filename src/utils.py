@@ -12,6 +12,7 @@ from typing import Any, Optional
 from pathlib import Path
 
 import tiktoken
+from constants import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,8 @@ def ensure_config_files_exist(logger):
         logger: An instance of the application's logger.
     """
     try:
-        abs_path = os.path.abspath(__file__)
-        src_dir = os.path.dirname(abs_path)
-        project_root_dir = os.path.dirname(src_dir)
-        config_dir = Path(project_root_dir) / "config"
+        # Use the PROJECT_ROOT from constants to ensure consistent project structure
+        config_dir = PROJECT_ROOT / "config"
 
         files_to_check = {
             "config.yaml": "config.yaml.example",
