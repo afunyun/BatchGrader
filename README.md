@@ -1,6 +1,14 @@
 # BatchGrader: Batch LLM Evaluation with OpenAI Batch API
 
-## Last updated: 2025-05-16
+## Last updated: 2025-05-18
+
+**0.5.3 (2025-05-18):**
+
+- Standardized import structures throughout the codebase
+- Resolved circular dependency issues
+- Enhanced error handling for import operations
+- Improved robustness across all modules
+- Added EVEN MORE tests + ensured they are passing
 
 **0.5.1 (2025-05-16):**
 
@@ -127,7 +135,7 @@ All configuration is managed via simple YAML.
 
 3. **Usage**
 
-   - Always make sure your `.venv` is active—if it's not, something *will* break, almost guaranteed.
+   - Always make sure your `.venv` is active—if it's not, something _will_ break, almost guaranteed.
    - Rename `config/config.yaml.example` to `config/config.yaml` and fill in the values.
      (If you get a config loading error, check that these files are in the expected `/config` location.)
    - Then run:
@@ -389,23 +397,31 @@ BatchGrader/
 │   ├── output/
 │   └── logs/              # Test run logs (.keep present)
 ├── src/
-│   ├── batch_runner.py         # Main entry point & CLI
-│   ├── config_loader.py        # Loads config & defaults
-│   ├── cost_estimator.py       # Cost estimation logic
-│   ├── data_loader.py          # Reads/writes CSV/JSON/JSONL
-│   ├── evaluator.py            # Prompt template mgmt
-│   ├── input_splitter.py       # Utility for input splitting by token limit
-│   ├── llm_client.py           # OpenAI Batch API client
-│   ├── logger.py               # Modular logging utility
-│   ├── log_utils.py            # Log pruning/archiving
-│   ├── file_utils.py           # File/directory helpers (e.g., prune_chunked_dir)
-│   ├── rich_display.py         # Rich CLI live tables
-│   ├── token_tracker.py        # Tracks API token usage
-│   └── __pycache__/
+│   ├── batch_job.py       # Job abstraction for concurrent processing
+│   ├── batch_runner.py    # Main entry point & orchestration
+│   ├── cli.py             # Command-line interface and argument parsing
+│   ├── config_loader.py   # Loads config & defaults
+│   ├── constants.py       # Central constants repository
+│   ├── cost_estimator.py  # Cost estimation logic
+│   ├── data_loader.py     # Reads/writes CSV/JSON/JSONL
+│   ├── evaluator.py       # Prompt template mgmt
+│   ├── file_processor.py  # Unified file processing abstraction
+│   ├── file_utils.py      # File/directory helpers
+│   ├── input_splitter.py  # Utility for input splitting by token limit
+│   ├── llm_client.py      # OpenAI Batch API client
+│   ├── llm_utils.py       # LLM utility functions
+│   ├── log_utils.py       # Log pruning/archiving
+│   ├── logger.py          # Modular logging utility
+│   ├── prompt_utils.py    # Prompt handling utilities
+│   ├── rich_display.py    # Rich CLI live tables
+│   ├── token_tracker.py   # Tracks API token usage
+│   ├── token_utils.py     # Token counting/validation utilities
+│   └── utils.py           # General utility functions
 ├── requirements.txt
 ├── pyproject.toml
+├── pytest.ini
 ├── README.md
-└── ...
+└── uv.lock
 ```
 
 - All chunked input files are auto-stored in `input/_chunked/`.

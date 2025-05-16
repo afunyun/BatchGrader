@@ -1,6 +1,6 @@
 [project]
 name = "batchgrader"
-version = "0.5.0"
+version = "0.5.3"
 description = "Simple cli/config based batch job tool for OpenAI API."
 authors = [
     {name = "afunyun", email = "github@afjaun.mozmail.com"}
@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 
 [tool.poetry]
 name = "batchgrader"
-version = "0.5.0"
+version = "0.5.3"
 description = "Simple cli/config based batch job tool for OpenAI API."
 authors = ["afunyun <github@afjaun.mozmail.com>"]
 license = "MIT"
