@@ -2,9 +2,10 @@
 
 ## Recent Changes
 
+- **Version 0.5.9** (2025-05-16): Completed test coverage improvements across multiple modules. 100% coverage for several important modules, and near-perfect coverage for several other modules. All tests now running with pytest.
 - **Version 0.5.8.3** (2025-05-16): Added comprehensive tests for the `input_splitter` module ([`src/input_splitter.py`](src/input_splitter.py:1)), covering various file types, splitting strategies, edge cases, and error handling. Test file created at [`tests/test_input_splitter.py`](tests/test_input_splitter.py).
-- **Version 0.5.8.1** (2025-05-12): Fixed project path resolution and config file handling issues. [See changelog](docs/CHANGELOG.md)
-- **Version 0.5.8** (2025-05-01): Fixed all test failures and improved code reliability. [See changelog](docs/CHANGELOG.md)
+- **Version 0.5.8.1** (2025-05-12): Fixed project path resolution and config file handling issues.
+- **Version 0.5.8** (2025-05-01): Fixed all test failures and improved code reliability.
 
 ## Overview
 
