@@ -11,25 +11,22 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .batch_job import BatchJob
 from .llm_client import LLMClient
-from .rich_display import RichJobTable, print_summary_table
+from .rich_display import RichJobTable
 from .logger import logger
 from .file_utils import prune_chunked_dir
 from .log_utils import prune_logs_if_needed
 from .data_loader import load_data, save_data
-from .evaluator import load_prompt_template
-from .config_loader import load_config, CONFIG_DIR, is_examples_file_default
+from .config_loader import load_config
 from .cost_estimator import CostEstimator
 from .token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary, log_token_usage_event
 from .input_splitter import split_file_by_token_limit
-from .batch_job import BatchJob
-from .rich_display import RichJobTable
-import pandas as pd
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from .constants import LOG_DIR, ARCHIVE_DIR, MAX_BATCH_SIZE, DEFAULT_MODEL
+from .prompt_utils import load_system_prompt
+from .token_utils import count_input_tokens, count_completion_tokens, create_token_counter
+from .file_processor import process_file_wrapper, prepare_output_path
 from rich.live import Live
 from typing import Optional
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'logs')
-ARCHIVE_DIR = os.path.join(LOG_DIR, 'archive')
 prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -363,6 +360,21 @@ def _pfc_aggregate_and_cleanup(completed_jobs_list: list[BatchJob],
     return combined_df
 
 def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
+    """
+    Process a file concurrently by dividing it into chunks.
+    
+    Args:
+        filepath: Path to the input file
+        config: Configuration dictionary
+        system_prompt_content: System prompt content
+        response_field: Response field name
+        llm_model_name: LLM model name
+        api_key_prefix: API key prefix for token logging
+        tiktoken_encoding_func: Tokenizer encoder
+        
+    Returns:
+        DataFrame with aggregated results or None if processing failed
+    """
     jobs = _generate_chunk_job_objects(
         original_filepath=filepath, 
         system_prompt_content=system_prompt_content, 
@@ -372,9 +384,11 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
         llm_model_name=llm_model_name, 
         api_key_prefix=api_key_prefix 
     )
+    
     if not jobs:
         logger.info(f"No data loaded from {filepath}. Skipping.")
         return None
+        
     halt_on_failure = config.get('halt_on_chunk_failure', True)
     completed_jobs = []
     rich_table = RichJobTable() 
@@ -412,8 +426,8 @@ def process_file_concurrently(filepath, config, system_prompt_content, response_
         logger.info(f"All chunks processed for {os.path.basename(filepath)}. Aggregating results...")
         return _pfc_aggregate_and_cleanup(completed_jobs, filepath, response_field)
     finally:
-        if jobs:
-            pass
+        # Placeholder for future cleanup operations if needed
+        pass
 
 
 def process_file(filepath, output_dir):
@@ -425,198 +439,29 @@ def process_file(filepath, output_dir):
     Returns:
         True if successful, False if any error or batch job failure.
     """
-    filename = os.path.basename(filepath)
-    file_root, file_ext = os.path.splitext(filename)
-    if 'tests' in filepath.replace('\\', '/').lower():
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        output_dir = os.path.join(project_root, 'tests', 'output')
-    else:
-        output_dir = output_dir
-    os.makedirs(output_dir, exist_ok=True)
-    config_force_chunk = config.get('force_chunk_count', 0) 
-    if 'legacy' in file_root.lower():
-        out_suffix = '_results'
-    elif config_force_chunk and config_force_chunk > 1:
-        out_suffix = '_forced_results'
-    else:
-        out_suffix = '_results'
-    output_filename = f"{file_root}{out_suffix}{file_ext}"
-    output_path = os.path.join(output_dir, output_filename)
-    if os.path.exists(output_path):
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"{file_root}{out_suffix}_{timestamp}{file_ext}"
-        output_path = os.path.join(output_dir, output_filename)
-        logger.info(f"Output file already exists. Using new filename: {output_filename}")
-
-    logger.info(f"Processing file: {filepath}")
-    df = None
+    # Load system prompt and configuration
+    system_prompt_content = load_system_prompt(config)
+    model_name = config.get('openai_model_name', DEFAULT_MODEL)
+    token_limit = config.get('token_limit', 2_000_000)
+    
+    # Load encoder
     try:
-        df = load_data(filepath)
-        logger.info(f"Loaded {len(df)} rows from {filepath}")
-
-        examples_dir = config.get('examples_dir')
-        if not examples_dir:
-            raise ValueError("'examples_dir' not found in config.yaml.")
-        project_root = CONFIG_DIR.parent
-        abs_examples_path = (project_root / examples_dir).resolve()
-        if is_examples_file_default(abs_examples_path):
-            system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
-        else:
-            if not abs_examples_path.exists():
-                raise FileNotFoundError(f"Examples file not found: {abs_examples_path}. Please provide a valid examples file or update your config.")
-            with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
-                example_lines = [line.strip() for line in ex_f if line.strip()]
-            if not example_lines:
-                raise ValueError(f"No examples found in {abs_examples_path}.")
-            formatted_examples = '\n'.join(f"- {ex}" for ex in example_lines)
-            system_prompt_template = load_prompt_template("batch_evaluation_prompt")
-            if '{dynamic_examples}' not in system_prompt_template:
-                raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
-            system_prompt_content = system_prompt_template.format(dynamic_examples=formatted_examples)
-
-        try:
-            import tiktoken
-            model_name = config.get('openai_model_name', 'gpt-4o-mini-2024-07-18')
-            try:
-                enc = tiktoken.encoding_for_model(model_name)
-            except KeyError:
-                logger.warning(f"[WARN] tiktoken does not recognize model '{model_name}', using cl100k_base encoding.")
-                enc = tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            logger.error("\n\n############################")
-            logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-            logger.error("RERUN: uv pip install -r requirements.txt")
-            logger.error("############################\n\n")
-            raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
-
-        def count_input_tokens_per_row(row, system_prompt_content, response_field, enc):
-            sys_tokens = len(enc.encode(system_prompt_content))
-            user_prompt = f"Please evaluate the following text: {str(row[response_field])}"
-            user_tokens = len(enc.encode(user_prompt))
-            return sys_tokens + user_tokens
-
-        def count_completion_tokens(row, enc):
-            completion = row.get('llm_score', '')
-            return len(enc.encode(str(completion)))
-
-        def count_submitted_tokens(row):
-            sys_tokens = len(enc.encode(system_prompt_content))
-            user_prompt = f"Please evaluate the following text: {str(row[RESPONSE_FIELD])}"
-            user_tokens = len(enc.encode(user_prompt))
-            return sys_tokens + user_tokens
-        
-        token_counts = df.apply(count_submitted_tokens, axis=1)
-        total_tokens = token_counts.sum()
-        avg_tokens = token_counts.mean()
-        max_tokens = token_counts.max()
-        logger.info(f"[SUBMITTED TOKENS] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
-
-        if total_tokens > TOKEN_LIMIT:
-            logger.error(f"[ERROR] Total submitted tokens ({total_tokens}) exceeds the allowed cap of {TOKEN_LIMIT} for a single batch.")
-            logger.error("Please reduce your batch size or check your usage at https://platform.openai.com/usage.")
-            logger.error("Batch submission halted. No API calls were made.")
-            try:
-                llm_client = LLMClient()
-                update_token_log(llm_client.api_key, 0)
-            except Exception as e:
-                logger.error(f"[WARN] Could not log token usage: {e}")
-            return False
-        try:
-            llm_client = LLMClient()
-            update_token_log(llm_client.api_key, int(total_tokens))
-        except Exception as e:
-            logger.error(f"[WARN] Could not log token usage: {e}")
-
-        if df.empty:
-            logger.info(f"No data loaded from {filepath}. Skipping.")
-            return False
-
-        MAX_BATCH_SIZE = 50000
-        if len(df) > MAX_BATCH_SIZE:
-            logger.warning(f"[WARN] Input file contains {len(df)} rows. Only the first {MAX_BATCH_SIZE} will be sent to the API (limit is 50,000 per batch). The rest will be ignored for this run. Simultaneous requests to the API are not supported yet but I am working on it.")
-            df = df.iloc[:MAX_BATCH_SIZE].copy() 
-
-        force_chunk_count = config.get('force_chunk_count', 0)
-        if force_chunk_count > 1 or config.get('split_token_limit', 500_000) < total_tokens:
-            df_with_results = process_file_concurrently(
-                filepath, config, system_prompt_content, RESPONSE_FIELD, model_name, llm_client.api_key, enc
-            )
-        else:
-            llm_client = LLMClient()
-            try:
-                df_with_results = llm_client.run_batch_job(
-                    df, system_prompt_content, response_field_name=RESPONSE_FIELD, base_filename_for_tagging=filename
-                )
-            except Exception as batch_exc:
-                logger.error(f"[ERROR] Batch job failed for {filepath}: {batch_exc}")
-                return False
-
-        save_data(df_with_results.drop(columns=['custom_id'], errors='ignore'), output_path)
-        logger.success(f"Processed {filepath}. Results saved to {output_path}")
-        logger.success(f"Total rows successfully processed: {len(df_with_results)}")
-        error_rows = df_with_results['llm_score'].str.contains('Error', case=False)
-        if error_rows.any():
-            logger.info(f"Total rows with errors: {error_rows.sum()}")
-            if error_rows.sum() == len(df_with_results):
-                logger.error(f"[BATCH FAILURE] All rows failed for {filepath}. Halting further processing.")
-                return False
-        
-        try:
-            input_col_name = 'input_tokens'
-            output_col_name = 'output_tokens'
-            if enc is None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
-                logger.error("\n\n############################")
-                logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-                logger.error("RERUN: uv pip install -r requirements.txt")
-                logger.error("############################\n\n")
-                raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
-            if enc is not None and (input_col_name not in df_with_results.columns or output_col_name not in df_with_results.columns):
-                df_with_results[input_col_name] = df_with_results.apply(lambda row: count_input_tokens_per_row(row, system_prompt_content, RESPONSE_FIELD, enc), axis=1)
-                df_with_results[output_col_name] = df_with_results.apply(lambda row: count_completion_tokens(row, enc), axis=1)
-            n_input_tokens = int(df_with_results[input_col_name].sum()) if input_col_name in df_with_results.columns else 0
-            n_output_tokens = int(df_with_results[output_col_name].sum()) if output_col_name in df_with_results.columns else 0
-            model_name = config.get('openai_model_name', 'gpt-4o-2024-08-06')
-            try:
-                cost = CostEstimator.estimate_cost(model_name, n_input_tokens, n_output_tokens)
-                logger.info(f"Estimated LLM cost: ${cost:.4f} (input: {n_input_tokens} tokens, output: {n_output_tokens} tokens, model: {model_name})")
-            except Exception as ce:
-                logger.error(f"Could not estimate cost: {ce}")
-            try:
-                log_token_usage_event(
-                    api_key=llm_client.api_key,
-                    model=model_name,
-                    input_tokens=n_input_tokens,
-                    output_tokens=n_output_tokens,
-                    timestamp=None,
-                    request_id=None
-                )
-                logger.info("Token usage event logged to output/token_usage_events.jsonl.")
-            except Exception as log_exc:
-                logger.error(f"[Token Logging Error] Failed to log token usage event: {log_exc}")
-        except Exception as cost_exception:
-            logger.error(f"[Cost Estimation Error] {cost_exception}")
-
+        import tiktoken
+        encoder = tiktoken.encoding_for_model(model_name)
     except Exception as e:
-        logger.error(f"An error occurred while processing {filepath}: {e}")
-        log_basename = os.path.splitext(filename)[0] + ".log"
-        log_base_path = os.path.join(output_dir, log_basename)
-        if os.path.exists(log_base_path):
-            file_root, file_ext = os.path.splitext(log_basename)
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_log_filename = f"{file_root}_{timestamp}{file_ext}"
-            log_path = os.path.join(output_dir, new_log_filename)
-            logger.info(f"Log file already exists. Using new filename: {new_log_filename}")
-        else:
-            log_path = log_base_path
-        try:
-            with open(log_path, 'w') as f_log:
-                f_log.write(f"Failed to process {filepath}.\nError: {e}\n")
-            logger.info(f"Logged error to {log_path}")
-        except Exception as save_err:
-            logger.error(f"Double fail: exception in processing and then in saving error log for {filepath}: {save_err} ... aborting.")
-        return False
-
-    return True
+        logger.error("Critical tiktoken import/initialization error. Please ensure tiktoken is installed correctly (e.g., 'uv pip install -r requirements.txt'). Error details: " + str(e))
+        raise RuntimeError("tiktoken is essential for token counting and splitting. Installation or setup failed.")
+    
+    # Process the file using the unified file processing module
+    return process_file_wrapper(
+        filepath=filepath,
+        output_dir=output_dir,
+        config=config,
+        system_prompt_content=system_prompt_content,
+        response_field=RESPONSE_FIELD,
+        encoder=encoder,
+        token_limit=token_limit
+    )
 
 def get_request_mode(args):
     """
@@ -699,7 +544,10 @@ if __name__ == "__main__":
 
     show_stats = args.statistics or (not args.count_tokens and not args.split_tokens)
 
-    llm_client = LLMClient()
+    # Import and use the centralized LLM utilities
+    from .llm_utils import get_llm_client
+
+    llm_client = get_llm_client()
     if not llm_client.api_key:
         logger.error("Error: OPENAI_API_KEY not set in config/config.yaml.")
         exit(1)
@@ -758,80 +606,54 @@ if __name__ == "__main__":
         logger.info(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats please reformat.)")
         exit(0)
 
-    def get_token_counter(system_prompt_content, response_field, enc):
-        def count_submitted_tokens(row):
-            sys_tokens = len(enc.encode(system_prompt_content))
-            user_prompt = f"Please evaluate the following text: {str(row[response_field])}"
-            user_tokens = len(enc.encode(user_prompt))
-            return sys_tokens + user_tokens
-        return count_submitted_tokens
-
     for resolved_path, df in files_found:
         try:
             logger.info(f"\nProcessing file: {resolved_path}")
             
-            examples_dir = config.get('examples_dir')
-            if not examples_dir:
-                raise ValueError("'examples_dir' not found in config.yaml.")
-            project_root = CONFIG_DIR.parent
-            abs_examples_path = (project_root / examples_dir).resolve()
-            if is_examples_file_default(abs_examples_path):
-                system_prompt_content = load_prompt_template("batch_evaluation_prompt_generic")
-            else:
-                if not abs_examples_path.exists():
-                    raise FileNotFoundError(f"Examples file not found: {abs_examples_path}. Please provide a valid examples file or update your config.")
-                with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
-                    example_lines = [line.strip() for line in ex_f if line.strip()]
-                if not example_lines:
-                    raise ValueError(f"No examples found in {abs_examples_path}.")
-                formatted_examples = '\n'.join(f"- {ex}" for ex in example_lines)
-                system_prompt_template = load_prompt_template("batch_evaluation_prompt")
-                if '{dynamic_examples}' not in system_prompt_template:
-                    raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
-                system_prompt_content = system_prompt_template.format(dynamic_examples=formatted_examples)
+            # Load and format the system prompt
+            system_prompt_content = load_system_prompt(config)
 
             try:
                 import tiktoken
-                enc = tiktoken.encoding_for_model(config.get('openai_model_name', 'gpt-4o-mini-2024-07-18'))
-            except Exception:
-                logger.error("\n\n############################")
-                logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-                logger.error("RERUN: uv pip install -r requirements.txt")
-                logger.error("############################\n\n")
-                raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
+                enc = tiktoken.encoding_for_model(config.get('openai_model_name', DEFAULT_MODEL))
+            except Exception as e:
+                logger.error("Critical tiktoken import/initialization error. Please ensure tiktoken is installed correctly (e.g., 'uv pip install -r requirements.txt'). Error details: " + str(e))
+                raise RuntimeError("tiktoken is essential for token counting and splitting. Installation or setup failed.")
+
+            # Use token utilities from token_utils
+            from .token_utils import create_token_counter, get_token_count_message, calculate_token_stats
 
             if args.count_tokens or args.split_tokens:
                 if enc is None:
-                    logger.error("\n\n############################")
-                    logger.error("ERROR: You need tiktoken or half of the functionality explodes, my guy!")
-                    logger.error("RERUN: uv pip install -r requirements.txt")
-                    logger.error("############################\n\n")
-                    raise RuntimeError("You need tiktoken or half of the functionality explodes my guy. Run 'uv pip install -r requirements.txt'")
-                token_counter = get_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
+                    logger.error("tiktoken encoder (enc) is None, which should not happen if tiktoken imported successfully. This indicates a deeper issue.")
+                    raise RuntimeError("tiktoken encoder failed to initialize even after successful import.")
+                
+                # Count tokens using the centralized utility
+                token_counter = create_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
                 token_counts = df.apply(token_counter, axis=1)
-                total_tokens = token_counts.sum()
-                avg_tokens = token_counts.mean()
-                max_tokens = token_counts.max()
-                logger.info(f"[TOKEN COUNT] Total: {total_tokens}, Avg: {avg_tokens:.1f}, Max: {max_tokens}")
+                token_stats = calculate_token_stats(token_counts)
+                
+                # Log token count message
+                logger.info(get_token_count_message(token_stats))
+                
                 if args.split_tokens:
                     display_name = os.path.basename(resolved_path)
-                    if total_tokens <= TOKEN_LIMIT:
+                    if token_stats['total'] <= TOKEN_LIMIT:
                         logger.info(f"File {display_name} does not exceed the token limit. No split needed.")
                     else:
                         logger.info(f"Splitting {display_name} into chunks not exceeding {split_token_limit} tokens...")
                         output_files, token_counts = split_file_by_token_limit(resolved_path, split_token_limit, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
                         logger.info(f"Split complete. Output files: {output_files}")
                         for out_file, tok_count in zip(output_files, token_counts):
-                            logger.info(f"Output file: {out_file} | Tokens: {tok_count}")
-                continue
-            ok = process_file(resolved_path, OUTPUT_DIR)
-            if not ok:
-                logger.error(f"[BATCH HALTED] Halting further batch processing due to failure in {resolved_path}.")
-                break
+                            logger.info(f"  - {os.path.basename(out_file)}: {tok_count:,} tokens")
+            else:
+                # Process the file using our unified processing function
+                success = process_file(resolved_path, OUTPUT_DIR)
+                if not success:
+                    logger.warning(f"Processing {os.path.basename(resolved_path)} was not successful.")
         except Exception as e:
-            logger.error(f"[BATCH HALTED] Error processing {resolved_path}: {e}")
-            logger.error("Halting further batch processing due to failure.")
-            break
+            logger.error(f"Error processing {resolved_path}: {e}", exc_info=True)
+            continue
     logger.success("Batch finished processing.\n")
 
     for handler in getattr(logger, 'file_logger', logging.getLogger()).handlers:
