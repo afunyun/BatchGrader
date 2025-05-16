@@ -37,6 +37,31 @@ from config_loader import load_config
 logger = logging.getLogger('BatchGrader')
 
 
+class InputSplitterError(Exception):
+    """Base exception for input splitter errors"""
+    pass
+
+
+class MissingArgumentError(InputSplitterError):
+    """Exception raised when a required argument is missing"""
+    pass
+
+
+class FileNotFoundError(InputSplitterError):
+    """Exception raised when input file is not found"""
+    pass
+
+
+class UnsupportedFileTypeError(InputSplitterError):
+    """Exception raised when file type is not supported"""
+    pass
+
+
+class OutputDirectoryError(InputSplitterError):
+    """Exception raised when output directory cannot be determined or created"""
+    pass
+
+
 def split_file_by_token_limit(input_path,
                               token_limit=None,
                               count_tokens_fn=None,
@@ -53,6 +78,16 @@ def split_file_by_token_limit(input_path,
     - If force_chunk_count > 1: splits into N row-based chunks, then checks token count per chunk and warns/errors if any chunk exceeds token_limit.
     - Otherwise, splits by token_limit or row_limit as before.
     If df is provided, it is used as the input data; otherwise, input_path is loaded.
+    
+    Returns:
+        Tuple of (output_files, token_counts) where output_files is a list of file paths and token_counts is a list of token counts.
+        
+    Raises:
+        MissingArgumentError: When a required argument like file_prefix is missing in recursive calls
+        FileNotFoundError: When input file is not found
+        UnsupportedFileTypeError: When file type is not supported
+        OutputDirectoryError: When output directory cannot be determined
+        ValueError: When neither token_limit nor row_limit is provided
     """
     # If no logger is passed, use the module logger
     if not logger:
@@ -62,6 +97,12 @@ def split_file_by_token_limit(input_path,
         f"Splitting file: {input_path if input_path else 'DataFrame input'}, Token Limit: {token_limit}, Row Limit: {row_limit}, Force Chunks: {force_chunk_count}"
     )
 
+    # Validate that at least one of token_limit or row_limit is set
+    if token_limit is None and row_limit is None and force_chunk_count is None:
+        raise ValueError(
+            "At least one of token_limit, row_limit, or force_chunk_count must be provided"
+        )
+
     current_ext = None
     current_base_name = None
 
@@ -69,35 +110,29 @@ def split_file_by_token_limit(input_path,
         current_ext = _original_ext
 
         if not file_prefix:
-            logger.error(
+            raise MissingArgumentError(
                 "file_prefix must be provided in recursive calls when _original_ext is set."
             )
-            return [], []
         current_base_name = file_prefix
     elif input_path:
         current_ext = os.path.splitext(input_path)[1].lower()
         current_base_name = file_prefix or os.path.splitext(
             os.path.basename(input_path))[0]
     else:
-
         if df is None:
-            logger.error(
+            raise MissingArgumentError(
                 "Cannot determine file type or name: input_path is None, _original_ext is not set, and df is None."
             )
-            return [], []
         else:
-
-            logger.error(
+            raise MissingArgumentError(
                 "Cannot determine output file type: df provided without input_path or _original_ext."
             )
-            return [], []
 
     if df is not None:
         loaded_df = df
     else:
         if not input_path or not os.path.exists(input_path):
-            logger.error(f"Input file not found: {input_path}")
-            return [], []
+            raise FileNotFoundError(f"Input file not found: {input_path}")
 
         if current_ext == '.csv':
             loaded_df = pd.read_csv(input_path)
@@ -106,9 +141,8 @@ def split_file_by_token_limit(input_path,
         elif current_ext == '.json':
             loaded_df = pd.read_json(input_path)
         else:
-            logger.error(
+            raise UnsupportedFileTypeError(
                 f"Unsupported file type: {current_ext} for file {input_path}")
-            return [], []
 
     if loaded_df.empty:
         logger.warning(
@@ -121,10 +155,9 @@ def split_file_by_token_limit(input_path,
             base_input_dir = os.path.dirname(input_path)
             output_dir = os.path.join(base_input_dir, '_chunked')
         else:
-            logger.error(
+            raise OutputDirectoryError(
                 "output_dir is None and cannot be defaulted as input_path was not provided."
             )
-            return [], []
 
     os.makedirs(output_dir, exist_ok=True)
     keep_path = os.path.join(output_dir, '.keep')

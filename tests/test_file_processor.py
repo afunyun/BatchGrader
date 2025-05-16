@@ -320,8 +320,11 @@ def test_continue_on_chunk_failure(mocker, temp_test_dir_fp,
                      model=None,
                      api_key=None,
                      endpoint=None,
-                     logger=None):
+                     logger=None,
+                     config=None):
             self.__class__.call_count += 1
+            # Handle config parameter correctly
+            self.config = config or {}
             self.model = model or config_to_use.get('openai_model_name')
             self.api_key = api_key or config_to_use.get('openai_api_key')
             self.endpoint = endpoint

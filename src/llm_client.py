@@ -4,39 +4,22 @@ import tempfile
 import time
 import uuid
 from datetime import datetime
+from typing import Dict, Any, Optional
 
 import openai
 from openai import OpenAI
 from rich.console import Console
 
-from config_loader import load_config
 from logger import logger as global_logger_instance
 
-config = load_config()
 
-
-def get_default_api_key():
-    return config['openai_api_key']
-
-
-def get_default_model():
-    return config['openai_model_name']
-
-
-def get_default_endpoint():
-    return config['batch_api_endpoint']
-
-
-def get_default_max_tokens():
-    return int(config['max_tokens_per_response'])
-
-
-def get_default_poll_interval():
-    return int(config['poll_interval_seconds'])
-
-
-def get_default_response_field():
-    return config['response_field']
+def get_config_value(config: Dict[str, Any],
+                     key: str,
+                     default: Any = None) -> Any:
+    """
+    Helper function to safely extract values from config dict
+    """
+    return config.get(key, default)
 
 
 class SimulatedChunkFailureError(Exception):
@@ -45,18 +28,40 @@ class SimulatedChunkFailureError(Exception):
 
 class LLMClient:
 
-    def __init__(self, model=None, api_key=None, endpoint=None, logger=None):
+    def __init__(self,
+                 model=None,
+                 api_key=None,
+                 endpoint=None,
+                 logger=None,
+                 config=None):
         self.logger = logger or global_logger_instance
-        self.api_key = api_key or get_default_api_key()
-        self.model = model or get_default_model()
-        self.endpoint = endpoint or get_default_endpoint()
-        self.max_tokens = get_default_max_tokens()
-        self.poll_interval = get_default_poll_interval()
-        openai.api_key = self.api_key
+        self.config = config or {}
+
+        # Extract values from injected config or use provided parameters
+        self.api_key = api_key or get_config_value(self.config,
+                                                   'openai_api_key')
+        self.model = model or get_config_value(self.config,
+                                               'openai_model_name')
+        self.endpoint = endpoint or get_config_value(self.config,
+                                                     'batch_api_endpoint')
+        self.max_tokens = int(
+            get_config_value(self.config, 'max_tokens_per_response', 1000))
+        self.poll_interval = int(
+            get_config_value(self.config, 'poll_interval_seconds', 60))
+
+        # Create client instance with the API key
         self.client = OpenAI(api_key=self.api_key)
         self.logger.info(
             f"LLMClient initialized. Model: {self.model}, Endpoint: {self.endpoint}"
         )
+
+        # Optional: Initialize encoder if needed
+        self.encoder = None
+        try:
+            import tiktoken
+            self.encoder = tiktoken.encoding_for_model(self.model)
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize encoder: {e}")
 
     def _prepare_batch_requests(self, df, system_prompt_content,
                                 response_field_name):
@@ -260,48 +265,42 @@ class LLMClient:
                       response_field_name=None,
                       base_filename_for_tagging=None):
         """
-        runs a full batch job: prepares requests, uploads input, manages job, processes results.
-        Returns the processed DataFrame with results.
+        Run a batch job for a dataframe.
+        
+        Args:
+            df: Pandas DataFrame with responses to evaluate
+            system_prompt_content: System prompt for the model
+            response_field_name: Column name in df containing text to evaluate
+            base_filename_for_tagging: Base filename for temporary files
+        
+        Returns:
+            DataFrame with evaluation results added
         """
-
-        if self.api_key == "TEST_KEY_FAIL_CONTINUE":
-            if base_filename_for_tagging in [
-                    "chunk_with_failure_chunk_2", "chunk_with_failure_chunk_4"
-            ]:
-                self.logger.info(
-                    f"Simulating failure for chunk: {base_filename_for_tagging} due to TEST_KEY_FAIL_CONTINUE"
-                )
-                raise SimulatedChunkFailureError(
-                    f"Simulated failure for {base_filename_for_tagging}")
-
-            self.logger.info(
-                f"Simulating success for chunk: {base_filename_for_tagging} due to TEST_KEY_FAIL_CONTINUE (non-failing chunk)"
-            )
-
-            llm_output_column_name = config.get('llm_output_column_name',
-                                                'llm_response')
-            df_with_ids = df.copy()
-            if 'custom_id' not in df_with_ids.columns:
-                df_with_ids['custom_id'] = [
-                    str(uuid.uuid4()) for _ in range(len(df_with_ids))
-                ]
-            df_with_ids[
-                llm_output_column_name] = f"Mocked success for {base_filename_for_tagging}"
-            return df_with_ids
-
+        # Extract the response field name from config if not provided
         if response_field_name is None:
-            response_field_name = get_default_response_field()
+            response_field_name = get_config_value(self.config,
+                                                   'response_field',
+                                                   'response')
+
+        # Derive a base filename for tagging if not provided
         if base_filename_for_tagging is None:
-            base_filename_for_tagging = "batch_input"
-        batch_requests_data, df_with_ids = self._prepare_batch_requests(
+            base_filename_for_tagging = f"batch_job_{int(time.time())}"
+
+        # Special test behavior is now handled through mocking in tests, not production code
+
+        # Prepare batch requests and upload
+        requests_data, df_with_custom_ids = self._prepare_batch_requests(
             df, system_prompt_content, response_field_name)
-        if not batch_requests_data:
-            self.logger.warning("No requests generated. Skipping.")
-            return df
+
         input_file_id = self._upload_batch_input_file(
-            batch_requests_data, base_filename_for_tagging)
-        final_batch_obj = self._manage_batch_job(input_file_id,
-                                                 base_filename_for_tagging)
-        df_with_results = self._process_batch_outputs(final_batch_obj,
-                                                      df_with_ids)
-        return df_with_results
+            requests_data, base_filename_for_tagging)
+
+        # Manage the batch job
+        batch_job_result = self._manage_batch_job(input_file_id,
+                                                  base_filename_for_tagging)
+
+        # Process outputs
+        result_df = self._process_batch_outputs(batch_job_result,
+                                                df_with_custom_ids)
+
+        return result_df

@@ -4,6 +4,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Default paths for logs and archives relative to project root
+# These are immutable default paths, code should not modify these at runtime
+# Instead, pass directory paths as parameters to functions that need them
 DEFAULT_LOG_DIR: Path = PROJECT_ROOT / 'output' / 'logs'
 DEFAULT_ARCHIVE_DIR: Path = DEFAULT_LOG_DIR / 'archive'
 

@@ -17,23 +17,31 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from config_loader import load_config
-
-config = load_config()
-
-MAX_LOGS = config['max_logs']
-MAX_ARCHIVE = config['max_archive']
-
 
 def prune_logs_if_needed(log_dir,
                          archive_dir,
-                         max_logs=MAX_LOGS,
-                         max_archive=MAX_ARCHIVE):
+                         max_logs=None,
+                         max_archive=None,
+                         config=None):
     """
     Prune logs in log_dir if over max_logs.
     Moves oldest logs to archive_dir. If archive_dir exceeds max_archive, deletes oldest in archive_dir.
     Logs all actions to prune.log in archive_dir.
+    
+    Args:
+        log_dir: Directory where log files are stored
+        archive_dir: Directory where archived log files will be moved
+        max_logs: Maximum number of log files to keep in log_dir before archiving (default from config)
+        max_archive: Maximum number of log files to keep in archive_dir (default from config)
+        config: Configuration dictionary that may contain 'max_logs' and 'max_archive' keys
     """
+    # Use provided values or extract from config or use defaults
+    config = config or {}
+    max_logs = max_logs or config.get('max_logs',
+                                      100)  # Default to 100 if not specified
+    max_archive = max_archive or config.get(
+        'max_archive', 500)  # Default to 500 if not specified
+
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(archive_dir, exist_ok=True)
     prune_log = os.path.join(archive_dir, 'prune.log')

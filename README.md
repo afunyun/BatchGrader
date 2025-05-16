@@ -1,6 +1,21 @@
 # BatchGrader: Batch LLM Evaluation with OpenAI Batch API
 
-## Last updated: 2025-05-18
+## Last updated: 2025-05-20
+
+**0.5.5 (2025-05-20):**
+
+- Fixed evaluator error message to match test expectations
+- Updated LLMClient mock to properly handle config parameter
+- Fixed failing tests for better stability
+
+**0.5.4 (2025-05-19):**
+
+- Implemented comprehensive dependency injection across codebase
+- Fixed thread safety issues in concurrent file processing
+- Removed global state and module-level configuration loading
+- Improved exception handling with specific exception types
+- Enhanced test isolation by removing test-specific logic from production code
+- Standardized configuration management with proper parameter passing
 
 **0.5.3 (2025-05-18):**
 

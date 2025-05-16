@@ -1,45 +1,62 @@
 """
-name is misleading because hindsight is 20/20, but this basically just loads the prompts and prepares the prompts for the main batch request constructor so it can add them to the .jsonl
+Evaluator module for loading and preparing prompt templates.
+This module handles prompt loading from configuration files or falls back to defaults.
 """
 import sys
+from pathlib import Path
+from typing import Dict, Any, Optional
 
 import yaml
 
-# Default prompts used as fallbacks when prompts.yaml is missing or incomplete
-DEFAULT_PROMPTS = {
-    'evaluation_prompt': 'Default evaluation prompt. Rate on a scale of 1-5.',
-    'batch_prompt': 'Default batch processing prompt.'
-}
+# Import default prompts from config_loader instead of defining them here
+from config_loader import DEFAULT_PROMPTS
 
 
-def load_prompt_template(name='evaluation_prompt'):
+def load_prompt_template(name: str = 'evaluation_prompt',
+                         config_dir: Optional[Path] = None) -> str:
     """
-    Loads the prompt template from prompts.yaml. If the prompt is missing, falls back to DEFAULT_PROMPTS in config_loader.py and sends a message in console to fix the config.
+    Loads the prompt template from prompts.yaml. If the prompt is missing, falls back to 
+    DEFAULT_PROMPTS in config_loader.py and logs a warning message.
+    
+    Args:
+        name: Name of the prompt to load
+        config_dir: Optional directory path where prompts.yaml is located
+        
+    Returns:
+        The prompt template as a string
+        
+    Raises:
+        RuntimeError: If the prompt can't be loaded from either source
     """
-    import sys
+    if config_dir is None:
+        config_dir = Path("config")
+
+    prompts_path = config_dir / "prompts.yaml"
+
     try:
-        with open("config/prompts.yaml", 'r') as f:
-            data = yaml.safe_load(f) or {}
-        if name in data:
-            return data[name]
+        if prompts_path.exists():
+            with open(prompts_path, 'r') as f:
+                data = yaml.safe_load(f) or {}
+            if name in data:
+                return data[name]
+            else:
+                print(
+                    f"[WARN] Prompt '{name}' not found in {prompts_path}. Using default.",
+                    file=sys.stderr)
         else:
             print(
-                f"[WARN] Prompt '{name}' not found in prompts.yaml. Using default.",
+                f"[WARN] Prompts file not found at {prompts_path}. Using default.",
                 file=sys.stderr)
     except Exception as e:
-        print(f"[WARN] Could not load prompts.yaml ({e}). Using default.",
+        print(f"[WARN] Could not load {prompts_path} ({e}). Using default.",
               file=sys.stderr)
-    # fallback to default
-    try:
-        if name in DEFAULT_PROMPTS:
-            return DEFAULT_PROMPTS[name]
-        else:
-            raise KeyError(
-                f"Prompt '{name}' not found in DEFAULT_PROMPTS. This should never happen."
-            )
-    except Exception as e:
+
+    # Fallback to default prompts from config_loader
+    if name in DEFAULT_PROMPTS:
+        return DEFAULT_PROMPTS[name]
+    else:
         raise RuntimeError(
-            f"Failed to load prompt '{name}' from both prompts.yaml and DEFAULT_PROMPTS: {e}, this should REALLY never happen. It's joever."
+            f"Failed to load prompt '{name}'. Not found in {prompts_path} or DEFAULT_PROMPTS. This should REALLY never happen."
         )
 
 

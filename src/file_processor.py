@@ -600,11 +600,23 @@ def _generate_chunk_job_objects(
     return jobs
 
 
-def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient,
-                                   response_field_name: str) -> BatchJob:
+def _execute_single_batch_job_task(
+        batch_job: BatchJob,
+        llm_client: Optional[LLMClient] = None,
+        response_field_name: str = "response",
+        config: Optional[Dict[str, Any]] = None) -> BatchJob:
     """
     Worker function to process a single BatchJob chunk.
     Updates batch_job status and results in place. Returns the updated batch_job object.
+    
+    Args:
+        batch_job: The BatchJob to process
+        llm_client: Optional LLMClient instance. If None, creates a new one for thread safety
+        response_field_name: Name of response field to process
+        config: Optional configuration dictionary to pass to LLMClient if created
+        
+    Returns:
+        The updated BatchJob object
     """
     if batch_job.chunk_df is None or batch_job.chunk_df.empty:
         if batch_job.status != "error":
@@ -615,6 +627,21 @@ def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient,
                 f"[{batch_job.chunk_id_str}] Skipping task execution: {batch_job.error_message}"
             )
         return batch_job
+
+    # Create a new LLMClient if one wasn't provided for thread safety
+    if llm_client is None:
+        try:
+            llm_client = LLMClient(config=config)
+            logger.debug(
+                f"[{batch_job.chunk_id_str}] Created new LLMClient instance for thread safety"
+            )
+        except Exception as e:
+            batch_job.status = "error"
+            batch_job.error_message = f"Failed to create LLMClient: {str(e)}"
+            batch_job.error_details = traceback.format_exc()
+            logger.error(
+                f"[{batch_job.chunk_id_str}] {batch_job.error_message}")
+            return batch_job
 
     try:
         batch_job.status = "running"
@@ -672,16 +699,26 @@ def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient,
     return batch_job
 
 
-def _pfc_submit_jobs(jobs_to_submit: List[BatchJob], response_field_name: str,
-                     max_workers_config: int) -> Dict[Any, BatchJob]:
-    """Submits BatchJob objects to a ThreadPoolExecutor."""
-    llm_client = LLMClient()
+def _pfc_submit_jobs(
+        jobs_to_submit: List[BatchJob],
+        response_field_name: str,
+        max_workers_config: int,
+        config: Optional[Dict[str, Any]] = None) -> Dict[Any, BatchJob]:
+    """
+    Submits BatchJob objects to a ThreadPoolExecutor.    
+    Creates a new LLMClient for each job to ensure thread safety.
+    """
     with ThreadPoolExecutor(max_workers=max_workers_config) as executor:
-        future_to_job_map = {
-            executor.submit(_execute_single_batch_job_task, job, llm_client, response_field_name):
-            job
-            for job in jobs_to_submit
-        }
+        # Submit each job with its own LLMClient instance
+        # Don't create LLMClient outside of the executor to avoid sharing between threads
+        future_to_job_map = {}
+        for job in jobs_to_submit:
+            # Each submit call will create a separate LLMClient inside the _execute_single_batch_job_task
+            # Pass config to ensure consistent configuration
+            future = executor.submit(_execute_single_batch_job_task, job, None,
+                                     response_field_name, config)
+            future_to_job_map[future] = job
+
     logger.info(f"Submitted {len(future_to_job_map)} chunk jobs to executor.")
     return future_to_job_map
 
@@ -933,7 +970,7 @@ def process_file_concurrently(
     max_workers = config.get('max_simultaneous_batches',
                              config.get('max_workers', 2))
     future_to_job_map: Dict[Any, BatchJob] = _pfc_submit_jobs(
-        jobs, response_field, max_workers)
+        jobs, response_field, max_workers, config)
 
     try:
         llm_actual_output_column_name = config.get('llm_output_column_name',

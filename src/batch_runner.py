@@ -1,16 +1,14 @@
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 
 from config_loader import load_config
 from constants import (
-    ARCHIVE_DIR,
     DEFAULT_GLOBAL_TOKEN_LIMIT,
     DEFAULT_MODEL,
     DEFAULT_RESPONSE_FIELD,
     DEFAULT_SPLIT_TOKEN_LIMIT,
-    LOG_DIR,
     MAX_BATCH_SIZE,
 )
 from data_loader import load_data, save_data
@@ -22,9 +20,29 @@ from log_utils import prune_logs_if_needed
 from prompt_utils import load_system_prompt
 from token_tracker import get_token_usage_for_day, get_token_usage_summary, log_token_usage_event, update_token_log
 
-# prune_logs_if_needed is called here based on initial LOG_DIR, ARCHIVE_DIR
-# This needs to be called *after* args are parsed if --log-dir is used.
-# Will be handled by moving prune_logs_if_needed call into run_batch_processing.
+
+def get_log_dirs(args) -> Tuple[Path, Path]:
+    """
+    Get log and archive directories, either from args or using defaults from constants.
+    
+    Args:
+        args: Command line arguments which may include log_dir
+        
+    Returns:
+        Tuple of (log_dir, archive_dir) as Path objects
+    """
+    from constants import DEFAULT_LOG_DIR, DEFAULT_ARCHIVE_DIR
+
+    if hasattr(args, 'log_dir') and args.log_dir:
+        log_dir = Path(args.log_dir).resolve()
+        archive_dir = log_dir / 'archive'
+        logger.info(f"Log directory from CLI: {log_dir}")
+        logger.info(f"Archive directory: {archive_dir}")
+    else:
+        log_dir = DEFAULT_LOG_DIR
+        archive_dir = DEFAULT_ARCHIVE_DIR
+
+    return log_dir, archive_dir
 
 
 def process_file(filepath_str: str, output_dir_str: str,
@@ -46,8 +64,8 @@ def process_file(filepath_str: str, output_dir_str: str,
         # This might be better suited inside file_processor or llm_client if always the same
         encoder = None
         try:
-            llm_client_for_encoder = LLMClient(
-            )  # Temporary client to get encoder
+            # Pass config to LLMClient instead of having it load config itself
+            llm_client_for_encoder = LLMClient(config=config)
             encoder = llm_client_for_encoder.encoder
             if encoder is None:
                 raise ValueError("LLMClient did not provide an encoder.")
@@ -96,18 +114,11 @@ def process_file(filepath_str: str, output_dir_str: str,
         return False
 
 
-def get_request_mode(args: Any) -> str:
-    """Determines the request mode based on CLI arguments."""
-    if args.mode:
-        return args.mode.lower()
-    # Fallback or default logic if needed, though CLI should enforce mode
-    return "batch"  # Default to batch if not specified, though argparse should handle this
-
-
-def print_token_cost_stats():
+def print_token_cost_stats(config=None):
     """Prints token usage statistics for the current day."""
     try:
-        llm_client = LLMClient()  # To get API key
+        # Pass config to LLMClient instead of having it load config itself
+        llm_client = LLMClient(config=config)
         api_key = llm_client.api_key
         daily_usage = get_token_usage_for_day(api_key)
         if daily_usage:
@@ -124,15 +135,21 @@ def print_token_cost_stats():
         logger.error(f"Could not retrieve daily token stats: {e}")
 
 
-def print_token_cost_summary(summary_file_path: Optional[str] = None):
+def print_token_cost_summary(summary_file_path: Optional[str] = None,
+                             log_dir: Optional[Path] = None,
+                             config=None):
     """Prints a summary of token usage from the summary file."""
     try:
-        llm_client = LLMClient()
+        llm_client = LLMClient(config=config)
         api_key = llm_client.api_key
 
-        # Default path if not provided, using LOG_DIR which should be configured
-        # This summary path might need to be more robustly defined, perhaps via constants or config
-        default_summary_path = LOG_DIR / f"token_usage_summary_{api_key[:8]}.json"
+        # Use provided log_dir or get from constants
+        if log_dir is None:
+            from constants import DEFAULT_LOG_DIR
+            log_dir = DEFAULT_LOG_DIR
+
+        # Default path if not provided
+        default_summary_path = log_dir / f"token_usage_summary_{api_key[:8]}.json"
         actual_summary_path = Path(
             summary_file_path) if summary_file_path else default_summary_path
 
@@ -166,18 +183,11 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
     Main function to run batch processing based on parsed arguments and configuration.
     (CLI parsing will be moved to cli.py, this function will be called by cli.py)
     """
-    # Ensure LOG_DIR and ARCHIVE_DIR from constants are updated if specified in args
-    # This must happen BEFORE prune_logs_if_needed if it relies on the final LOG_DIR
-    global LOG_DIR, ARCHIVE_DIR  # Allow modification of global constants for this run
-    if hasattr(args, 'log_dir') and args.log_dir:
-        LOG_DIR = Path(args.log_dir).resolve()
-        # Update ARCHIVE_DIR relative to the new LOG_DIR
-        ARCHIVE_DIR = LOG_DIR / 'archive'
-        logger.info(f"Log directory overridden by CLI: {LOG_DIR}")
-        logger.info(f"Archive directory updated to: {ARCHIVE_DIR}")
+    # Get log directories from args or constants
+    log_dir, archive_dir = get_log_dirs(args)
 
-    # Now that LOG_DIR and ARCHIVE_DIR are finalized, prune logs
-    prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
+    # Now that log_dir and archive_dir are determined (not modifying globals), prune logs
+    prune_logs_if_needed(log_dir, archive_dir, config=config)
 
     if args.input_file:
         files_to_process_str = [args.input_file]
@@ -216,13 +226,20 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
     for filepath_str in files_to_process_str:
         filepath = Path(filepath_str)
         logger.info(f"\n--- Starting processing for: {filepath.name} ---")
-        success = process_file(str(filepath), str(output_directory),
-                               config)  # process_file expects strings for now
-        if success:
-            processed_files_count += 1
-        else:
+        try:
+            success = process_file(str(filepath), str(output_directory),
+                                   config)
+            if success:
+                processed_files_count += 1
+            else:
+                failed_files_count += 1
+                overall_success = False  # If any file fails, overall is not a complete success
+        except Exception as e:
+            logger.error(
+                f"Unhandled exception processing {filepath.name}: {str(e)}",
+                exc_info=True)
             failed_files_count += 1
-            overall_success = False  # If any file fails, overall is not a complete success
+            overall_success = False
         logger.info(f"--- Finished processing for: {filepath.name} ---")
 
     logger.info("\nBatch processing finished.")
@@ -230,25 +247,19 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
     logger.info(f"Failed files: {failed_files_count}")
 
     if args.stats:
-        print_token_cost_stats()
-        print_token_cost_summary(
-        )  # Consider passing a configured summary path if needed
+        print_token_cost_stats(config=config)
+        print_token_cost_summary(log_dir=log_dir, config=config)
 
     if not overall_success and failed_files_count > 0:
         logger.warning("Some files failed to process. Please check the logs.")
-        # Potentially exit with a non-zero status code if this is the main script part
-        # sys.exit(1) # This would be for the final __main__ in cli.py
 
 
 def run_count_mode(args: Any, config: Dict[str, Any]):
     """Runs the token counting mode for input files."""
     logger.info("--- Running in COUNT mode ---")
 
-    global LOG_DIR, ARCHIVE_DIR  # Allow modification of global constants for this run
-    if hasattr(args, 'log_dir') and args.log_dir:
-        LOG_DIR = Path(args.log_dir).resolve()
-        ARCHIVE_DIR = LOG_DIR / 'archive'
-        logger.info(f"Log directory overridden by CLI: {LOG_DIR}")
+    # Get log directories from args or constants
+    log_dir, archive_dir = get_log_dirs(args)
     # No log pruning needed for count mode as it's typically non-invasive
 
     if args.input_file:
@@ -276,15 +287,11 @@ def run_count_mode(args: Any, config: Dict[str, Any]):
 
     system_prompt_content = load_system_prompt(config)
     response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD)
-    # For counting, we usually want to see stats even if it exceeds a processing limit
-    # So, we use a very high token_limit for the check_token_limits function or just directly count.
-    # check_token_limits conveniently returns stats. We'll use a dummy high limit.
-    # However, check_token_limits itself logs errors if limit is exceeded, which might be confusing in "count" mode.
-    # Let's refine this: we need an encoder first.
 
+    # Get encoder for token counting
     encoder = None
     try:
-        llm_client_for_encoder = LLMClient()
+        llm_client_for_encoder = LLMClient(config=config)
         encoder = llm_client_for_encoder.encoder
         if encoder is None:
             raise ValueError(
@@ -308,8 +315,6 @@ def run_count_mode(args: Any, config: Dict[str, Any]):
             # Using check_token_limits just to get the stats dictionary.
             # The actual limit check (True/False) isn't the primary concern here, but the stats are.
             # We pass a very large token_limit to avoid triggering "limit exceeded" logs from check_token_limits.
-            # An alternative would be to reimplement the counting part of check_token_limits here.
-            # For now, let's use check_token_limits with a practically infinite limit for counting.
             _is_valid, token_stats = check_token_limits(
                 df,
                 system_prompt_content,
@@ -346,11 +351,8 @@ def run_split_mode(args: Any, config: Dict[str, Any]):
     """Runs the file splitting mode for input files."""
     logger.info("--- Running in SPLIT mode ---")
 
-    global LOG_DIR, ARCHIVE_DIR
-    if hasattr(args, 'log_dir') and args.log_dir:
-        LOG_DIR = Path(args.log_dir).resolve()
-        ARCHIVE_DIR = LOG_DIR / 'archive'
-        logger.info(f"Log directory overridden by CLI: {LOG_DIR}")
+    # Get log directories from args or constants
+    log_dir, archive_dir = get_log_dirs(args)
     # No log pruning needed for split mode. Output is chunked files.
 
     if args.input_file:

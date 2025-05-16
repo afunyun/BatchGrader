@@ -17,8 +17,8 @@ from config_loader import load_config
 
 # Import functions to be tested from batch_runner
 from batch_runner import (process_file, run_batch_processing, run_count_mode,
-                          run_split_mode, get_request_mode,
-                          print_token_cost_stats, print_token_cost_summary)
+                          run_split_mode, print_token_cost_stats,
+                          print_token_cost_summary)
 
 # Import relevant items from other modules for mocking or setup
 from file_processor import process_file_wrapper, process_file_concurrently
