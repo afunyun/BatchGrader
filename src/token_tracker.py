@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, TextIO, Any
 
 import pandas as pd
-from input_splitter import FileNotFoundError as InputSplitterFileNotFoundError
+from src.input_splitter import FileNotFoundError as InputSplitterFileNotFoundError
 
 logger = logging.getLogger(__name__)
 

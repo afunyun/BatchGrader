@@ -5,7 +5,7 @@ import pandas as pd
 import uuid
 from unittest.mock import patch, MagicMock, ANY
 
-from llm_client import LLMClient
+from src.llm_client import LLMClient
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def llm_client_instance(tmp_path_factory):
     """
     Provides an LLMClient instance with a mocked OpenAI client.
     """
-    with patch('llm_client.OpenAI') as mock_openai_class:
+    with patch('src.llm_client.OpenAI') as mock_openai_class:
         mock_openai_instance = MagicMock()
         mock_openai_class.return_value = mock_openai_instance
 
@@ -127,12 +127,12 @@ def test_llm_client_init(mocker) -> None:
             return "config_api_key"
         return default
 
-    mock_get_config = mocker.patch('llm_client.get_config_value')
+    mock_get_config = mocker.patch('src.llm_client.get_config_value')
     mock_get_config.side_effect = mock_config_getter
 
     # Mock OpenAI and encoder
-    mocker.patch('llm_client.OpenAI')
-    mocker.patch('llm_client.get_encoder')
+    mocker.patch('src.llm_client.OpenAI')
+    mocker.patch('src.llm_client.get_encoder')
 
     # Test explicit initialization
     client = LLMClient(api_key="valid_key", model="gpt-3.5-turbo")
@@ -155,7 +155,22 @@ def test_prepare_batch_requests_basic(llm_client_instance):
     system_prompt = "Test system prompt"
     response_field = 'response'
 
-    # Call method
+    # Test with empty DataFrame
+    empty_df = pd.DataFrame({
+        'response': [],
+        'other_field': []
+    })
+
+    requests, result_df = llm_client_instance._prepare_batch_requests(
+        empty_df, "test prompt", 'response')
+    
+    assert isinstance(requests, list)
+    assert isinstance(result_df, pd.DataFrame)
+    assert len(requests) == 0
+    assert len(result_df) == 0
+    assert 'custom_id' in result_df.columns
+
+    # Test with non-empty DataFrame
     requests, result_df = llm_client_instance._prepare_batch_requests(
         df, system_prompt, response_field)
 
@@ -194,12 +209,161 @@ def test_prepare_batch_requests_custom_ids(llm_client_instance):
 def test_prepare_batch_requests_empty_dataframe(llm_client_instance):
     """Test with empty DataFrame."""
     df = pd.DataFrame(columns=['response'])
-    requests, result_df = llm_client_instance._prepare_batch_requests(
-        df, "test prompt", 'response')
 
-    assert len(requests) == 0
-    assert len(result_df) == 0
-    assert 'custom_id' in result_df.columns
+
+def test_llm_parse_batch_output_file_success(llm_client_instance, mocker):
+    """Test successful parsing of batch output file."""
+    # Mock the files.content() method to return test data
+    mock_response = mocker.MagicMock()
+    mock_response.text = """
+    {"custom_id": "test1", "response": {"body": {"choices": [{"message": {"content": "test content"}}]}}}
+    {"custom_id": "test2", "response": {"body": {"choices": [{"message": {"content": "another test"}}]}}}
+    """.strip()
+    
+    mocker.patch.object(llm_client_instance.client.files, 'content', return_value=mock_response)
+    
+    # Call the method
+    results = llm_client_instance._llm_parse_batch_output_file("test_file_id")
+    
+    # Verify results
+    assert len(results) == 2
+    assert results["test1"] == "test content"
+    assert results["test2"] == "another test"
+
+
+def test_llm_parse_batch_output_file_missing_custom_id(llm_client_instance, mocker, caplog):
+    """Test parsing with missing custom_id in response."""
+    mock_response = mocker.MagicMock()
+    mock_response.text = '{"response": {"body": {"choices": [{"message": {"content": "test"}}]}}}'
+    mocker.patch.object(llm_client_instance.client.files, 'content', return_value=mock_response)
+    
+    with caplog.at_level(logging.WARNING):
+        results = llm_client_instance._llm_parse_batch_output_file("test_file_id")
+        assert "Warning: Found item in output without custom_id" in caplog.text
+    assert len(results) == 0  # Shouldn't add entries without custom_id
+
+
+def test_llm_parse_batch_output_file_with_error(llm_client_instance, mocker, caplog):
+    """Test parsing response with error."""
+    mock_response = mocker.MagicMock()
+    mock_response.text = '''
+    {"custom_id": "err1", "error": {"message": "test error", "code": "invalid_request_error"}}
+    '''.strip()
+    mocker.patch.object(llm_client_instance.client.files, 'content', return_value=mock_response)
+    
+    with caplog.at_level(logging.WARNING):
+        results = llm_client_instance._llm_parse_batch_output_file("test_file_id")
+        assert "Request err1 failed: invalid_request_error - test error" in caplog.text
+    assert results["err1"] == "Error: invalid_request_error - test error"
+
+
+def test_llm_parse_batch_output_file_malformed(llm_client_instance, mocker, caplog):
+    """Test parsing malformed response."""
+    mock_response = mocker.MagicMock()
+    mock_response.text = '{"custom_id": "bad1", "response": {"invalid": "data"}}'
+    mocker.patch.object(llm_client_instance.client.files, 'content', return_value=mock_response)
+    
+    with caplog.at_level(logging.WARNING):
+        results = llm_client_instance._llm_parse_batch_output_file("test_file_id")
+        assert "Error parsing successful response for custom_id bad1" in caplog.text
+    assert results["bad1"] == "Error: Malformed response data"
+
+
+def test_llm_retrieve_batch_error_file_success(llm_client_instance, mocker, caplog):
+    """Test successful retrieval of error file."""
+    mock_response = mocker.MagicMock()
+    mock_response.text = "test error content"
+    mocker.patch.object(llm_client_instance.client.files, 'content', return_value=mock_response)
+    
+    with caplog.at_level(logging.INFO):
+        llm_client_instance._llm_retrieve_batch_error_file("error_file_id")
+        assert "Batch Error File Content" in caplog.text
+
+
+def test_llm_retrieve_batch_error_file_failure(llm_client_instance, mocker, caplog):
+    """Test failure when retrieving error file."""
+    mocker.patch.object(
+        llm_client_instance.client.files, 'content', 
+        side_effect=Exception("API error")
+    )
+    
+    with caplog.at_level(logging.WARNING):
+        llm_client_instance._llm_retrieve_batch_error_file("error_file_id")
+        assert "Error retrieving batch error file" in caplog.text
+
+
+def test_process_batch_outputs_completed_with_output(llm_client_instance, mocker):
+    """Test processing batch outputs for completed job with output file."""
+    # Setup test data
+    mock_batch = mocker.MagicMock()
+    mock_batch.status = "completed"
+    mock_batch.output_file_id = "output_123"
+    mock_batch.error_file_id = "error_123"
+    
+    df = pd.DataFrame({
+        'custom_id': ['test1', 'test2'],
+        'response': ['resp1', 'resp2']
+    })
+    
+    # Mock methods
+    mocker.patch.object(
+        llm_client_instance, 
+        '_llm_parse_batch_output_file', 
+        return_value={'test1': 'result1', 'test2': 'result2'}
+    )
+    mocker.patch.object(llm_client_instance, '_llm_retrieve_batch_error_file')
+    
+    # Call method
+    result_df = llm_client_instance._process_batch_outputs(mock_batch, df)
+    
+    # Verify results
+    assert isinstance(result_df, pd.DataFrame)
+    assert len(result_df) == 2
+    assert 'llm_score' in result_df.columns
+    llm_client_instance._llm_parse_batch_output_file.assert_called_once_with("output_123")
+    llm_client_instance._llm_retrieve_batch_error_file.assert_called_once_with("error_123")
+
+
+def test_process_batch_outputs_completed_no_output(llm_client_instance, mocker, caplog):
+    """Test processing batch outputs for completed job without output file."""
+    mock_batch = mocker.MagicMock()
+    mock_batch.status = "completed"
+    mock_batch.output_file_id = None
+    
+    df = pd.DataFrame({
+        'custom_id': ['test1'],
+        'response': ['resp1']
+    })
+    
+    with caplog.at_level(logging.WARNING):
+        result_df = llm_client_instance._process_batch_outputs(mock_batch, df)
+        assert "Batch completed, but no output file ID was provided" in caplog.text
+    
+    assert isinstance(result_df, pd.DataFrame)
+    assert len(result_df) == 1
+    assert 'llm_score' in result_df.columns
+    assert result_df.iloc[0]['llm_score'] == "Error: Batch completed with no output file"
+
+
+def test_process_batch_outputs_failed(llm_client_instance, mocker, caplog):
+    """Test processing outputs for failed batch job."""
+    mock_batch = mocker.MagicMock()
+    mock_batch.status = "failed"
+    mock_batch.error_file_id = "error_123"
+    
+    df = pd.DataFrame({
+        'custom_id': ['test1'],
+        'response': ['resp1']
+    })
+    
+    with caplog.at_level(logging.WARNING):
+        result_df = llm_client_instance._process_batch_outputs(mock_batch, df)
+        assert "Batch job did not complete successfully" in caplog.text
+    
+    assert isinstance(result_df, pd.DataFrame)
+    assert len(result_df) == 1
+    assert 'llm_score' in result_df.columns
+    assert result_df.iloc[0]['llm_score'].startswith("Error: Batch job status - ")
 
 
 def test_prepare_batch_requests_missing_response_field(llm_client_instance):

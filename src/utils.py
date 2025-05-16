@@ -12,7 +12,7 @@ from typing import Any, Optional
 from pathlib import Path
 
 import tiktoken
-from constants import PROJECT_ROOT
+from src.constants import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 

@@ -5,11 +5,12 @@ Unit tests for the llm_utils module.
 from datetime import datetime, timezone
 import pandas as pd
 import pytest
+import typing
 import pytest_asyncio
 from unittest.mock import patch, MagicMock, ANY, AsyncMock
 
-from llm_utils import get_llm_client, ProcessingResult
-from llm_client import LLMClient
+from src.llm_utils import get_llm_client, ProcessingResult
+from src.llm_client import LLMClient
 
 
 @pytest.fixture
@@ -35,7 +36,7 @@ def mock_encoder():
 @pytest.fixture
 def mock_llm_client():
     """Create a mock LLM client for testing."""
-    with patch('llm_utils.LLMClient') as mock_client:
+    with patch('src.llm_utils.LLMClient') as mock_client:
         mock_instance = MagicMock(spec=LLMClient)
         mock_instance.process_batch = AsyncMock(return_value=pd.DataFrame())
         mock_client.return_value = mock_instance
@@ -55,7 +56,10 @@ def test_processing_result():
                                             start_time=start_time)
 
     assert result.success is True
-    assert len(result.data) == 2
+    assert result.data is not None
+    if result.data is not None: # Explicit check for type narrowing
+        data_df = typing.cast(pd.DataFrame, result.data)
+        assert len(data_df) == 2
     assert result.token_usage['input_tokens'] == 10
     assert result.duration is None  # end_time not set
 
@@ -77,11 +81,14 @@ def test_processing_result():
     new_data = pd.DataFrame({'b': [3, 4, 5]})
     new_result = result.with_data(new_data)
     assert new_result.success is True
-    assert len(new_result.data) == 3
+    assert new_result.data is not None
+    if new_result.data is not None: # Explicit check for type narrowing
+        new_data_df = typing.cast(pd.DataFrame, new_result.data)
+        assert len(new_data_df) == 3
     assert result.data is not new_result.data  # Should be a new instance
 
 
-@patch('llm_utils.LLMClient')
+@patch('src.llm_utils.LLMClient')
 @pytest.mark.asyncio
 async def test_get_llm_client(mock_llm_client_patch):
     """Test LLM client retrieval."""

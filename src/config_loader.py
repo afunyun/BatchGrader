@@ -4,8 +4,8 @@ import logging
 
 import yaml
 
-from utils import ensure_config_files_exist as util_ensure_config_files_exist, deep_merge_dicts
-from constants import PROJECT_ROOT
+from src.utils import ensure_config_files_exist as util_ensure_config_files_exist, deep_merge_dicts
+from src.constants import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,8 @@
 import pytest
 import pandas as pd
-from batch_job import BatchJob
+from src.batch_job import BatchJob
 from unittest.mock import MagicMock, patch
-from exceptions import BatchGraderError
+from src.exceptions import BatchGraderError
 
 
 @pytest.fixture
@@ -37,6 +37,19 @@ def mock_job():
                     response_field="text",
                     original_filepath="test.csv",
                     chunk_file_path="test_chunk.csv")
+
+
+@pytest.fixture
+def zero_item_batch_job():
+    """Create a BatchJob instance with a zero-item DataFrame for testing."""
+    return BatchJob(
+        chunk_id_str="test_zero_item_chunk",
+        chunk_df=pd.DataFrame(),  # Empty DataFrame
+        system_prompt="Test system prompt for zero items",
+        response_field="output_text",
+        original_filepath="test/input/zero_item_file.csv",
+        chunk_file_path="test/input/_chunked/zero_item_file_part_1.csv"
+    )
 
 
 def test_batch_job_initialization(sample_df):
@@ -178,7 +191,7 @@ def test_batch_job_token_tracking(sample_batch_job):
 
 
 def test_batch_job_with_invalid_file() -> None:
-    """Test BatchJob initialization with invalid parameters.\n\n    Args:\n        None\n\n    Returns:\n        None\n    """
+    """Test BatchJob initialization with invalid parameters."""
     # Create a job with nonexistent file, but verify it works
     # Note: Based on the implementation, BatchJob doesn't validate file existence
     job = BatchJob(chunk_id_str="invalid",
@@ -191,3 +204,57 @@ def test_batch_job_with_invalid_file() -> None:
     assert job.chunk_id_str == "invalid"
     assert job.chunk_df is None
     assert job.status == "pending"
+
+
+def test_update_progress(sample_batch_job, zero_item_batch_job):
+    """Test progress tracking and ETA calculation."""
+    job = sample_batch_job
+    assert job.processed_items == 0
+    assert job.start_time is None
+    assert job.estimated_completion_time is None
+
+    # First update should set start time
+    job.update_progress(1)
+    assert job.processed_items == 1
+    assert job.start_time is not None
+    assert job.estimated_completion_time is not None
+
+    # Test capping at total_items
+    job.update_progress(10)
+    assert job.processed_items == job.total_items
+
+    # Test with zero items using fixture
+    zero_item_batch_job.update_progress(1)
+    assert zero_item_batch_job.processed_items == 0
+    assert zero_item_batch_job.estimated_completion_time is None
+
+
+def test_get_progress_eta_str(sample_batch_job, zero_item_batch_job):
+    """Test progress string formatting in different states."""
+    job = sample_batch_job
+
+    # Initial state
+    assert "0.00%" in job.get_progress_eta_str()
+    assert "Calculating" in job.get_progress_eta_str()
+
+    # After starting
+    job.status = "running"
+    eta_str = job.get_progress_eta_str()
+    assert "0.00%" in eta_str
+    assert "Started, calculating ETA" in eta_str
+
+    # After some progress
+    job.update_progress(1)
+    eta_str = job.get_progress_eta_str()
+    assert "33.33%" in eta_str
+    assert job.estimated_completion_time.strftime("%Y-%m-%d %H:%M:%S") in eta_str
+
+    # Completed state
+    job.status = "completed"
+    job.update_progress(3)
+    eta_str = job.get_progress_eta_str()
+    assert "100.00%" in eta_str
+    assert "Completed" in eta_str
+
+    # Zero items case using fixture
+    assert "N/A (no items)" in zero_item_batch_job.get_progress_eta_str()

@@ -9,10 +9,10 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch, mock_open, MagicMock, call
 
-from token_tracker import (_get_api_key_prefix, _load_pricing, _load_log,
-                           _save_log, update_token_log, log_token_usage_event,
-                           load_token_usage_events, get_token_usage_summary,
-                           get_total_cost, get_token_usage_for_day)
+from src.token_tracker import (_get_api_key_prefix, _load_pricing, _load_log,
+                            _save_log, update_token_log, log_token_usage_event,
+                            load_token_usage_events, get_token_usage_summary,
+                            get_total_cost, get_token_usage_for_day)
 
 
 @pytest.fixture
@@ -197,7 +197,7 @@ def test_update_token_log_new_entry(mock_token_log, temp_log_path: Path):
     mock_dt = MagicMock()
     mock_dt.now.return_value.strftime.return_value = fixed_date
 
-    with patch('token_tracker.datetime', mock_dt):
+    with patch('src.token_tracker.datetime', mock_dt):
         update_token_log("sk-newkeyprefix", 2500, log_path=temp_log_path)
 
         updated_log_content = json.loads(temp_log_path.read_text())
@@ -217,7 +217,7 @@ def test_log_token_usage_event(temp_event_log_path: Path,
     mock_dt = MagicMock()
     mock_dt.now.return_value.isoformat.return_value = fixed_timestamp
 
-    with patch('token_tracker.datetime', mock_dt):
+    with patch('src.token_tracker.datetime', mock_dt):
         log_token_usage_event(api_key="sk-1234567890abcdefghijklmn",
                               model="gpt-4o-mini-2024-07-18",
                               input_tokens=1000,

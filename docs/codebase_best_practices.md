@@ -6,9 +6,7 @@ This document outlines best practices for maintaining and extending the BatchGra
 
 ## 1. Import Structure
 
-**NEVER use relative imports (e.g., `from .module import ...`) in this project. All imports must be absolute and resolvable from the project root. Do NOT use `src.*` style imports either.**
-
-## NEVER use os for file access, it will fail
+**All imports must be absolute and resolvable from the project root. Local modules should be imported using `src.*` syntax. Relative imports are not allowed.**
 
 ### Standard Import Order
 
@@ -31,9 +29,9 @@ import openai
 from rich.console import Console
 
 # Local imports
-from config_loader import load_config
-from logger import logger
-from token_tracker import log_token_usage_event
+from src.config_loader import load_config
+from src.logger import logger
+from src.token_tracker import log_token_usage_event
 ```
 
 ### Typing Imports
@@ -74,7 +72,7 @@ Circular dependencies make code hard to understand, test, and maintain. They can
    ```python
    def process_data():
        # Import here to avoid circular import with module_b
-       from module_b import helper_function
+       from src.module_b import helper_function
        return helper_function()
    ```
 

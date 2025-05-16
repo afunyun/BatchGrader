@@ -8,7 +8,7 @@ import sys
 import yaml
 from unittest.mock import patch, mock_open
 
-from evaluator import load_prompt_template
+from src.evaluator import load_prompt_template
 
 # The actual default prompt from config_loader
 DEFAULT_PROMPT_TEXT = (
@@ -100,11 +100,21 @@ def test_load_prompt_template_fail_complete():
 
 def test_load_prompt_template_yaml_error():
     """Test handling of YAML parsing errors."""
-    with patch('builtins.open', mock_open(read_data="invalid: yaml: content")):
-        with patch('yaml.safe_load',
-                   side_effect=yaml.YAMLError("YAML parsing error")):
-            with patch('config_loader.DEFAULT_PROMPTS',
-                       {'batch_evaluation_prompt': DEFAULT_PROMPT_TEXT}):
-                with patch('sys.stderr'):
-                    prompt = load_prompt_template('batch_evaluation_prompt')
-                    assert prompt == DEFAULT_PROMPT_TEXT
+    with patch('pathlib.Path.exists', return_value=True), \
+         patch('builtins.open', mock_open(read_data="invalid: yaml: content")), \
+         patch('yaml.safe_load', side_effect=yaml.YAMLError("Invalid YAML")), \
+         patch('config_loader.DEFAULT_PROMPTS', {'batch_evaluation_prompt': DEFAULT_PROMPT_TEXT}), \
+         patch('sys.stderr'):
+        prompt = load_prompt_template('batch_evaluation_prompt')
+        assert prompt == DEFAULT_PROMPT_TEXT
+
+
+def test_load_prompt_template_general_error():
+    """Test handling of general exceptions during prompt loading."""
+    with patch('pathlib.Path.exists', return_value=True), \
+         patch('builtins.open', mock_open(read_data="valid: yaml")), \
+         patch('yaml.safe_load', side_effect=Exception("Unexpected error")), \
+         patch('config_loader.DEFAULT_PROMPTS', {'batch_evaluation_prompt': DEFAULT_PROMPT_TEXT}), \
+         patch('sys.stderr'):
+        prompt = load_prompt_template('batch_evaluation_prompt')
+        assert prompt == DEFAULT_PROMPT_TEXT

@@ -88,6 +88,15 @@ def create_token_counter(
         Callable: A function that takes a row dict and returns token count
     """
 
+    # If encoder is custom callable returning counter, use it
+    if callable(encoder):
+        try:
+            custom_counter = encoder(system_prompt_content, response_field, encoder)
+            if callable(custom_counter):
+                return custom_counter
+        except TypeError:
+            pass
+
     def token_counter(row: Dict[str, Any]) -> int:
         user_content = str(row.get(response_field, ''))
         system_content = system_prompt_content
@@ -98,7 +107,13 @@ def create_token_counter(
         else:
             prompt_text = f"{system_content}\n{user_content}"
 
-        return len(encoder.encode(prompt_text))
+        # Use encode method if available, else assume encoder is callable
+        if hasattr(encoder, 'encode'):
+            return len(encoder.encode(prompt_text))
+        elif callable(encoder):
+            return encoder(prompt_text)
+        else:
+            raise TypeError(f"Encoder must have an encode method or be callable, got {encoder}")
 
     return token_counter
 

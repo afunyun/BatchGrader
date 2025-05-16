@@ -5,8 +5,8 @@ from pathlib import Path
 
 # sys.path.insert(0, str(Path(__file__).parent.parent)) # Likely redundant with pytest.ini python_paths
 
-import cli  # Removed src. prefix
-from constants import PROJECT_ROOT, LOG_DIR as DEFAULT_LOG_DIR_CONST  # Removed src. prefix
+from src import cli  # Removed src. prefix
+from src.constants import PROJECT_ROOT, LOG_DIR as DEFAULT_LOG_DIR_CONST  # Removed src. prefix
 
 
 # Helper to set sys.argv for a test
@@ -22,9 +22,9 @@ def mock_sys_argv(monkeypatch):
 @pytest.fixture
 def mock_batch_runner_functions(mocker):
     mock_run_batch = mocker.patch(
-        'cli.run_batch_processing')  # Removed src. prefix
-    mock_run_count = mocker.patch('cli.run_count_mode')  # Removed src. prefix
-    mock_run_split = mocker.patch('cli.run_split_mode')  # Removed src. prefix
+        'src.cli.run_batch_processing')  # Removed src. prefix
+    mock_run_count = mocker.patch('src.cli.run_count_mode')  # Removed src. prefix
+    mock_run_split = mocker.patch('src.cli.run_split_mode')  # Removed src. prefix
     return {
         'batch': mock_run_batch,
         'count': mock_run_count,
@@ -35,7 +35,7 @@ def mock_batch_runner_functions(mocker):
 @pytest.fixture
 def mock_load_config(mocker):
     return mocker.patch(
-        'cli.load_config',  # Removed src. prefix
+        'src.cli.load_config',  # Corrected src. prefix
         return_value={'test_key': 'test_value'})
 
 
@@ -189,10 +189,10 @@ def test_cli_load_config_file_not_found(mock_sys_argv,
     non_existent_config = tmp_path / "non_existent_config.yaml"
 
     mocker.patch(
-        'cli.load_config',  # Removed src. prefix
+        'src.cli.load_config',  # Corrected src. prefix
         side_effect=FileNotFoundError("Config not found"))
     # We also need to mock logger because cli.py logs an error
-    mock_logger = mocker.patch('cli.logger')  # Removed src. prefix
+    mock_logger = mocker.patch('src.cli.logger')  # Corrected src. prefix
 
     argv = [
         'script_name', '--input-file',

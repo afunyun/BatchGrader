@@ -2,22 +2,23 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 import datetime
 import logging
+import sys
 
 import pandas as pd
 
-from config_loader import load_config
-from constants import (DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_MODEL,
-                       DEFAULT_RESPONSE_FIELD, DEFAULT_SPLIT_TOKEN_LIMIT,
-                       MAX_BATCH_SIZE, DEFAULT_EVENT_LOG_PATH,
-                       DEFAULT_TOKEN_USAGE_LOG_PATH)
-from data_loader import load_data, save_data
-from file_processor import check_token_limits, prepare_output_path, process_file_wrapper
-from input_splitter import split_file_by_token_limit
-from llm_client import LLMClient
-from log_utils import prune_logs_if_needed
-from prompt_utils import load_system_prompt
-from token_tracker import get_token_usage_for_day, get_token_usage_summary, log_token_usage_event, update_token_log
-from utils import get_encoder
+from src.config_loader import load_config
+from src.constants import (DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_MODEL,
+                           DEFAULT_RESPONSE_FIELD, DEFAULT_SPLIT_TOKEN_LIMIT,
+                           MAX_BATCH_SIZE, DEFAULT_EVENT_LOG_PATH,
+                           DEFAULT_TOKEN_USAGE_LOG_PATH)
+from src.data_loader import load_data, save_data
+from src.file_processor import check_token_limits, prepare_output_path, process_file_wrapper
+from src.input_splitter import split_file_by_token_limit
+from src.llm_client import LLMClient
+from src.log_utils import prune_logs_if_needed
+from src.prompt_utils import load_system_prompt
+from src.token_tracker import get_token_usage_for_day, get_token_usage_summary, log_token_usage_event, update_token_log
+from src.utils import get_encoder
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def get_log_dirs(args) -> Tuple[Path, Path]:
     Returns:
         Tuple of (log_dir, archive_dir) as Path objects
     """
-    from constants import DEFAULT_LOG_DIR, DEFAULT_ARCHIVE_DIR
+    from src.constants import DEFAULT_LOG_DIR, DEFAULT_ARCHIVE_DIR
 
     if hasattr(args, 'log_dir') and args.log_dir:
         log_dir = Path(args.log_dir).resolve()
@@ -166,7 +167,7 @@ def print_token_cost_summary(summary_file_path: Optional[str] = None,
 
         # Use provided log_dir or get from constants
         if log_dir is None:
-            from constants import DEFAULT_LOG_DIR
+            from src.constants import DEFAULT_LOG_DIR
             log_dir = DEFAULT_LOG_DIR
 
         # Default path if not provided
@@ -384,7 +385,7 @@ def run_count_mode(args: Any, config: Dict[str, Any]):
                 system_prompt_content,
                 response_field,
                 encoder,
-                token_limit=float('inf'))
+                token_limit=sys.maxsize)
 
             if token_stats:  # If token_stats were successfully calculated
                 logger.info(f"Token statistics for {filepath.name}:")
@@ -532,7 +533,7 @@ def run_split_mode(args: Any, config: Dict[str, Any]):
 if __name__ == "__main__":
     # Call the main function from the new cli.py module
     try:
-        from cli import main as cli_main
+        from src.cli import main as cli_main
         cli_main()
     except ImportError:
         # This fallback might be useful if running batch_runner.py directly in a way that messes with relative imports

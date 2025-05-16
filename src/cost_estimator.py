@@ -3,9 +3,9 @@ Cost Estimator for OpenAI API batch pricing.
 """
 import csv
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
-from config_loader import load_config
+from src.config_loader import load_config
 
 
 class CostEstimator:
@@ -21,7 +21,7 @@ class CostEstimator:
         cost = estimator.estimate_cost('gpt-4o-2024-08-06', 1200000, 800000)
         print(f"Estimated cost: ${cost:.4f}")
     """
-    _pricing: Dict[str, Tuple[float, float]] = None
+    _pricing: Optional[Dict[str, Tuple[float, float]]] = None
     _csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                              'docs', 'pricing.csv')
 
@@ -29,7 +29,7 @@ class CostEstimator:
     def _load_pricing(cls):
         pricing = {}
         with open(cls._csv_path, newline='', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
+            reader = csv.DictReader(csvfile)  # type: ignore[arg-type]
             for row in reader:
                 model = row['Model']
                 input_price = float(row['Input'])
@@ -62,7 +62,7 @@ class CostEstimator:
         return cost
 
 
-if __name__ == "__main__":  # this is just here for testing
+if __name__ == "__main__":  # pragma: no cover
     estimator = CostEstimator()
     cost = estimator.estimate_cost("gpt-4o-2024-08-06", 1200000, 800000)
     print(f"Estimated cost: ${cost:.4f}")

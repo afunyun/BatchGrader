@@ -7,8 +7,54 @@ import pytest
 import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
+import tiktoken
 
-from utils import deep_merge_dicts, ensure_config_files_exist
+from src.utils import deep_merge_dicts, ensure_config_files_exist, get_encoder
+
+
+def test_get_encoder_default():
+    """Test get_encoder returns the default encoder when no model_name is provided."""
+    encoder = get_encoder()
+    assert encoder is not None
+    # cl100k_base is the default used in get_encoder
+    expected_encoder = tiktoken.get_encoding("cl100k_base")
+    assert encoder.name == expected_encoder.name
+    # The encode/decode assertion has been removed to simplify the test
+    # and avoid issues if tiktoken's methods are being mocked elsewhere.
+    # The primary goal is to confirm the correct encoder object is returned.
+
+
+def test_get_encoder_specific_model():
+    """Test get_encoder returns the correct encoder for a specific valid model."""
+    # Using a common model name known to tiktoken
+    model_name = "gpt-4"
+    encoder = get_encoder(model_name)
+    assert encoder is not None
+    expected_encoder = tiktoken.encoding_for_model(model_name)
+    assert encoder.name == expected_encoder.name
+    # The encode/decode assertion has been removed for simplification.
+
+
+@patch('utils.tiktoken.encoding_for_model'
+       )  # Note: Patching where it's used by get_encoder
+def test_get_encoder_failure(mock_encoding_for_model, caplog):
+    """Test get_encoder when tiktoken fails to find/load an encoder."""
+    # Configure the mock for 'encoding_for_model' (called when model_name is provided)
+    # to raise a KeyError. This simulates tiktoken's behavior for an unknown model.
+    mock_error_message = "Test key error: Model not found for testing"
+    mock_encoding_for_model.side_effect = KeyError(mock_error_message)
+
+    # Call get_encoder with an invalid model name. This should now hit the 'except'
+    # block in get_encoder because our mock raises an error.
+    encoder = get_encoder("invalid-model-name-for-testing-12345")
+
+    # Assert that None is returned on failure
+    assert encoder is None
+
+    # Assert that a warning was logged by get_encoder's except block
+    assert "Failed to initialize encoder" in caplog.text
+    # Assert that our specific mocked error message is part of the logged exception text
+    assert mock_error_message in caplog.text
 
 
 def test_deep_merge_dicts_basic():

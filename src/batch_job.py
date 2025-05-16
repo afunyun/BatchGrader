@@ -86,22 +86,23 @@ class BatchJob:
 
     def update_progress(self, items_processed_increment: int):
         """Updates the progress of the job."""
-        if self.start_time is None:
+        if self.start_time is None and self.total_items > 0:
             self.start_time = time.monotonic()
 
         self.processed_items += items_processed_increment
         self.processed_items = min(self.processed_items,
                                    self.total_items)  # Cap at total_items
 
-        if self.processed_items > 0 and self.total_items > 0 and self.start_time is not None:
-            elapsed_time = time.monotonic() - self.start_time
-            time_per_item = elapsed_time / self.processed_items
-            remaining_items = self.total_items - self.processed_items
-            remaining_time_seconds = remaining_items * time_per_item
-            self.estimated_completion_time = datetime.datetime.now(
-            ) + datetime.timedelta(seconds=remaining_time_seconds)
-        elif self.processed_items == self.total_items:  # Job completed
-            self.estimated_completion_time = datetime.datetime.now()
+        if self.total_items > 0:  # Only calculate if there are items
+            if self.processed_items == self.total_items:  # Job completed
+                self.estimated_completion_time = datetime.datetime.now()
+            elif self.processed_items > 0 and self.start_time is not None:  # Job in progress
+                elapsed_time = time.monotonic() - self.start_time
+                time_per_item = elapsed_time / self.processed_items
+                remaining_items = self.total_items - self.processed_items
+                remaining_time_seconds = remaining_items * time_per_item
+                self.estimated_completion_time = datetime.datetime.now(
+                ) + datetime.timedelta(seconds=remaining_time_seconds)
 
     def get_progress_eta_str(self) -> str:
         """Returns a string with progress percentage and ETA."""

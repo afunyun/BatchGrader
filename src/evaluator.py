@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 import yaml
 
 # Import default prompts from config_loader instead of defining them here
-from config_loader import DEFAULT_PROMPTS
+from src.config_loader import DEFAULT_PROMPTS
 
 
 def load_prompt_template(name: str = 'evaluation_prompt',

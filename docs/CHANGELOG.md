@@ -2,6 +2,12 @@
 
 All notable changes to the BatchGrader project will be documented in this file.
 
+## 0.5.8.3 - 2025-05-16
+
+### Added
+
+- Added comprehensive tests for the `input_splitter` module ([`src/input_splitter.py`](src/input_splitter.py:1)), covering various file types, splitting strategies, edge cases, and error handling. Test file created at [`tests/test_input_splitter.py`](tests/test_input_splitter.py).
+
 ## 0.5.8.2 - 2025-05-15
 
 ### Fixed
@@ -9,11 +15,17 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Fixed test performance issues by properly mocking `time.sleep` in `test_manage_batch_job_success`
 - Improved test coverage to 76% by adding tests for error handling and edge cases
 - Fixed potential race conditions in test file cleanup
+- Fixed date-related tests in token_tracker.py
+- Enhanced mock setup for file operations
+- Improved consistency in encoder mocks
 
 ### Changed
 
 - Optimized test execution time by reducing unnecessary delays
 - Improved test reliability by ensuring proper cleanup between tests
+- Standardized testing patterns across the codebase
+- Added proper resource cleanup in tests to prevent side effects
+- Enhanced test assertions for better debugging and reliability
 
 ## 0.5.8.1 - 2025-05-16
 
@@ -157,9 +169,224 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Improved error handling and logging
 - Enhanced test coverage and organization
 
-## 0.4.5 - 2025-04-12
+## 0.4.5 - 2025-05-12
 
 ### Fixed
 
-- Continued fixes for repository clone functionality
-- Updated project version
+- Fixed repository clone functionality
+- Updated project version to 0.4.5
+- Fixed environment setup and import issues
+- Removed local-only batch_runner.py from project root
+- Updated run instructions for clarity
+
+## 0.4.4 - 2025-05-12
+
+### Fixed
+
+- Fixed pytest.ini_options not being read by pytest
+- Fixed asyncio_default_fixture_loop_scope not being read by pytest
+- Fixed tests returning None for variables and directory detection
+
+### Changed
+
+- Updated rich_display imports
+- Improved error handling for test environment setup
+
+## 0.4.3 - 2025-05-12
+
+### Fixed
+
+- Fixed pytest configuration issues
+- Resolved test environment setup problems
+
+## 0.4.2 - 2025-05-12
+
+### Fixed
+
+- Fixed asyncio fixture scope issues in tests
+- Improved test reliability
+
+## 0.4.1 - 2025-05-11
+
+### Fixed
+
+- Fixed test variable handling and directory detection
+- Resolved test environment setup issues
+
+## 0.4.0 - 2025-05-11
+
+### Added
+
+- Tightened token limits for better resource management
+- Revamped test runner
+- Unified file paths across the application
+- Restructured documentation
+
+### Fixed
+
+- Reintroduced exception when examples file is missing
+- Ensured proper logger state management
+
+## 0.3.3 - 2025-05-11
+
+### Changed
+
+- Performed comprehensive import cleanup
+- Standardized test output directories to tests/output/
+- Replaced console prints with RichJobTable for better visualization
+- Added live-updating progress bar
+
+## 0.3.2 - 2025-05-11
+
+### Added
+
+- Added check for pricing.csv existence
+- Implemented recursive deep-merge for configurations
+
+### Fixed
+
+- Fixed configuration merging to preserve nested settings
+
+## 0.3.1 - 2025-05-11
+
+### Fixed
+
+- Fixed chunking functionality
+- Cleaned up storage paths
+- Improved file organization
+
+## 0.3.0 - 2025-05-11
+
+### Added
+
+- Integrated Rich library for enhanced console output
+- Added colorized CLI job status table
+- Implemented summary table for jobs/tokens/cost
+- Enhanced logging capabilities
+
+### Changed
+
+- Replaced raw print statements with Rich-based output
+- Improved console visualization with emoji and colors
+- Beefed up logging throughout the application
+
+## 0.2.12 - 2025-05-11
+
+### Added
+
+- Live-updating, colorized CLI job status table
+- Centralized job status, errors, and progress tracking
+- Persistent logging to file for debugging
+
+### Fixed
+
+- Removed remaining print statements in llm_client.py
+- Improved job status visibility
+
+## 0.2.11 - 2025-05-11
+
+### Added
+
+- Chunking subdirectory for temporary files
+- Log pruning and archiving system
+- Automatic log rotation with archiving
+- Startup message in every log file
+- Color-coded console output
+
+### Fixed
+
+- Directory structure standardization
+- Error handling for CLI arguments
+- Test reliability
+
+## 0.2.10 - 2025-05-11
+
+### Changed
+
+- Renamed test directories:
+  - `tests/test_inputs/` → `tests/input/`
+  - `tests/test_outputs/` → `tests/output/`
+- Added `.keep` files to maintain directory structure
+- Updated test configurations and references
+- Modified `.gitignore` for new output directories
+
+## 0.2.9 - 2025-05-11
+
+### Added
+
+- `--config` command line argument
+- Testing script with multiple test cases
+- Faulty configs/datasets for testing
+- Testing agenda
+
+## 0.2.8 - 2025-05-11
+
+### Added
+
+- Concurrent batch processing in main workflow
+- `process_file_concurrently` function
+- Config layer for batch processing
+- Chunk job abstraction (`batch_job.py`)
+- `_generate_chunk_job_objects` helper
+
+### Changed
+
+- Main workflow now supports both single and concurrent modes
+- Backward compatibility with legacy single-batch logic
+
+## 0.2.7 - 2025-05-11
+
+### Added
+
+- Initial implementation of concurrent batch processing
+- Documentation for upcoming parallel processing features
+
+### Changed
+
+- Prepared codebase for parallel job execution
+- Improved error handling for concurrent operations
+
+## 0.2.6 - 2025-05-11
+
+### Added
+
+- Token usage and cost tracking over time
+- Cumulative statistics display
+- CLI arguments for statistics toggling
+
+### Fixed
+
+- Improved error handling for CLI arguments
+- Enhanced cost calculation accuracy
+
+## 0.2.5 - 2025-05-11
+
+### Added
+
+- `batch_runner.py` for command-line execution
+- Version update checking mechanism
+
+### Changed
+
+- Updated project versioning approach
+- Improved command-line interface
+
+## 0.2.4 - 2025-05-11
+
+### Added
+
+- `split_token_limit` configuration
+- Enhanced runtime information display
+
+### Fixed
+
+- Tiktoken error handling
+- Console output formatting
+- Token limit enforcement
+
+## 0.2.3 - 2025-05-11
+
+### Fixed
+
+- Initial release stabilization
+- Basic functionality verification

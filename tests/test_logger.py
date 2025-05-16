@@ -8,7 +8,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, call, mock_open, Mock
 
-from logger import setup_logging, SUCCESS_LEVEL_NUM
+from src.logger import setup_logging, SUCCESS_LEVEL_NUM
 
 
 @pytest.fixture
@@ -28,28 +28,31 @@ def temp_log_dir(tmp_path):
 
 def test_logger_init_creates_directory():
     """Test that logger creates log directory if it doesn't exist."""
-    with patch.object(Path, 'mkdir') as mock_mkdir, \
-         patch('logging.getLogger') as mock_get_logger, \
-         patch('logging.FileHandler'), \
-         patch('rich.logging.RichHandler'):
+    mock_path_instance = MagicMock(spec=Path)
+    mock_path_constructor = MagicMock(return_value=mock_path_instance)
+    
+    # Create mock handlers with proper level attributes
+    mock_file_handler = MagicMock(spec=logging.Handler)
+    mock_file_handler.level = logging.INFO
+    mock_rich_handler = MagicMock(spec=logging.Handler)
+    mock_rich_handler.level = logging.INFO
+    
+    with patch('src.logger.Path', mock_path_constructor) as mock_path_patch, \
+         patch('src.logger.logging.getLogger') as mock_get_logger, \
+         patch('src.logger.logging.FileHandler', return_value=mock_file_handler), \
+         patch('src.logger.RichHandler', return_value=mock_rich_handler):
 
         mock_logger_instance = MagicMock()
         mock_logger_instance.hasHandlers.return_value = False
         mock_get_logger.return_value = mock_logger_instance
 
-        test_path = Path('/nonexistent/path')
-        # Assuming setup_logging uses Path from pathlib directly and it gets patched by previous patch.object
-        # This test might need review for patch targets if logger.py uses 'from pathlib import Path as LoggerPath'
-        setup_logging(log_dir=test_path)
+        test_dir_str = '/nonexistent/path'
+        setup_logging(log_dir=Path(test_dir_str)) # Pass Path object
 
-        # Check that the directory was created using the mkdir method of the Path object
-        # This assertion relies on Path being patched correctly for the setup_logging context.
-        # If setup_logging internally creates a Path object, that object's mkdir should be called.
-        # The current patch.object(Path, 'mkdir') patches the mkdir method on the original Path class.
-        # If setup_logging uses `from pathlib import Path` then `logger.Path.mkdir` is the target for `test_path.mkdir()`
-        # For now, we assume the existing patch works or will be fixed by later general patching strategy.
-        # A better approach for this specific test might be to patch 'logger.Path' if that's where Path is resolved in logger.py
-        mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
+        # Check that Path constructor was called with the log_dir string
+        mock_path_patch.assert_called_once_with(test_dir_str)
+        # Check that mkdir was called on the Path instance returned by the constructor
+        mock_path_instance.mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
 
 def test_logger_init_adds_handlers():
@@ -59,11 +62,14 @@ def test_logger_init_adds_handlers():
     mock_datetime = MagicMock()
     mock_datetime.now.return_value = mock_dt_instance
 
-    mock_rich_instance = MagicMock(
-        spec=logging.Handler)  # Use spec for better mocking
+    # Create mock handler with level attribute properly set as an integer
+    mock_rich_instance = MagicMock(spec=logging.Handler)
+    mock_rich_instance.level = logging.INFO  # Set level as an integer
     mock_rich_handler_class = MagicMock(return_value=mock_rich_instance)
 
-    mock_file_instance = MagicMock(spec=logging.Handler)  # Use spec
+    # Create mock file handler with level attribute properly set as an integer
+    mock_file_instance = MagicMock(spec=logging.Handler)
+    mock_file_instance.level = logging.INFO  # Set level as an integer
     mock_file_handler_class = MagicMock(return_value=mock_file_instance)
 
     mock_path_instance = MagicMock(spec=Path)
@@ -75,11 +81,11 @@ def test_logger_init_adds_handlers():
     mock_get_logger_function = MagicMock(return_value=mock_logger_instance)
 
     # Patch where names are looked up in the logger module
-    with (patch('logger.Path', mock_path_constructor) as mock_path_patch, patch('logger.logging.getLogger', mock_get_logger_function) as mock_get_logger_patch, patch('logger.logging.FileHandler', mock_file_handler_class) as mock_file_handler_patch, patch('logger.RichHandler', mock_rich_handler_class) as mock_rich_handler_patch, patch('logger.datetime', mock_datetime) as mock_datetime_patch):
+    with (patch('src.logger.Path', mock_path_constructor) as mock_path_patch, patch('src.logger.logging.getLogger', mock_get_logger_function) as mock_get_logger_patch, patch('src.logger.logging.FileHandler', mock_file_handler_class) as mock_file_handler_patch, patch('src.logger.RichHandler', mock_rich_handler_class) as mock_rich_handler_patch, patch('src.logger.datetime', mock_datetime) as mock_datetime_patch):
 
         # Call the function under test
         setup_logging(
-            log_dir='/test/logs')  # Pass string, Path object created inside
+            log_dir=Path('/test/logs'))  # Pass Path object
 
         # Check that Path was used to create log_dir_path and for the log file
         mock_path_constructor.assert_any_call('/test/logs')
@@ -114,10 +120,10 @@ def test_logger_init_adds_handlers():
 def test_logger_skips_adding_handlers_if_already_exists():
     """Test that logger clears and re-adds handlers even if they already exist."""
     with patch('os.path.exists', return_value=True), \
-         patch('logging.getLogger') as mock_get_logger, \
-         patch('logging.FileHandler', MagicMock()) as mock_file_handler_class, \
-         patch('rich.logging.RichHandler', MagicMock()) as mock_rich_handler_class, \
-         patch.object(Path, 'mkdir'): # Mock mkdir to prevent actual creation
+         patch('src.logger.logging.getLogger') as mock_get_logger, \
+         patch('src.logger.logging.FileHandler', MagicMock()) as mock_file_handler_class, \
+         patch('src.logger.RichHandler', MagicMock()) as mock_rich_handler_class, \
+         patch('src.logger.Path'): # Mock Path constructor
 
         mock_logger_instance = MagicMock()
         mock_logger_instance.hasHandlers.return_value = True  # Simulate already has handlers
@@ -135,10 +141,10 @@ def test_logger_methods_call_underlying_logger():
     """Test that logger methods call the underlying logger methods."""
     with patch('os.path.exists', return_value=True), \
          patch('os.makedirs'), \
-         patch('logging.getLogger') as mock_get_logger, \
-         patch('logging.FileHandler'), \
-         patch('rich.logging.RichHandler'), \
-         patch('datetime.datetime') as mock_dt:
+         patch('src.logger.logging.getLogger') as mock_get_logger, \
+         patch('src.logger.logging.FileHandler'), \
+         patch('src.logger.RichHandler'), \
+         patch('src.logger.datetime') as mock_dt:
 
         # Mock datetime for consistent log file names
         mock_dt.now.return_value = Mock()
@@ -175,6 +181,23 @@ def test_success_log_level_registered():
     assert logging.getLevelName(SUCCESS_LEVEL_NUM) == "SUCCESS"
 
 
+def test_success_method_added_to_logger():
+    """Test that the success method is properly added to the Logger class."""
+    logger = logging.getLogger('test_logger')
+    assert hasattr(logger, 'success')
+    assert callable(logger.success)
+
+    with patch.object(logger, 'isEnabledFor', return_value=True), \
+         patch.object(logger, '_log') as mock_log:
+        logger.success('test message', 'arg1', kwarg1='value1')
+        mock_log.assert_called_once_with(SUCCESS_LEVEL_NUM, 'test message', ('arg1',), kwarg1='value1')
+
+    with patch.object(logger, 'isEnabledFor', return_value=False), \
+         patch.object(logger, '_log') as mock_log:
+        logger.success('test message')
+        mock_log.assert_not_called()
+
+
 def test_logger_integration(temp_log_dir):
     """Test actual creation of a logger instance with a real log directory."""
     log_dir_path = temp_log_dir  # Use the Path object directly
@@ -188,38 +211,20 @@ def test_logger_integration(temp_log_dir):
     mock_dt_now_instance.strftime.return_value = fixed_timestamp
     mock_dt.now.return_value = mock_dt_now_instance
 
-    # os.makedirs(temp_log_dir, exist_ok=True) # setup_logging will do this.
-
-    # The MockBatchGraderLogger class is invalid as setup_logging is a function, not a class.
-    # This test needs to be re-thought to test setup_logging() and then using logging.getLogger().
-    """
-    class MockBatchGraderLogger(setup_logging):
-
-        def __init__(self, log_dir=None):
-            if log_dir is None:
-                log_dir = 'output/logs'
-            self.log_dir = log_dir
-            self.log_file = str(log_file_path)
-            self.logger = logging.getLogger('BatchGrader')
-
-            # Clear any existing handlers
-            if self.logger.hasHandlers():
-                self.logger.handlers.clear()
-
-            self.logger.setLevel(logging.INFO)
-            file_handler = logging.FileHandler(self.log_file, encoding='utf-8')
-            file_formatter = logging.Formatter(
-                '[%(asctime)s] %(levelname)s: %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S')
-            file_handler.setFormatter(file_formatter)
-            file_handler.setLevel(logging.INFO)
-            self.logger.addHandler(file_handler)
-    """
+    # Create mock handlers with proper level attributes
+    mock_rich_handler = MagicMock(spec=logging.Handler)
+    mock_rich_handler.level = logging.INFO
+    mock_rich_handler_class = MagicMock(return_value=mock_rich_handler)
+    
+    mock_file_handler = MagicMock(spec=logging.FileHandler)
+    mock_file_handler.level = logging.INFO
+    mock_file_handler_class = MagicMock(return_value=mock_file_handler)
 
     # Ensure RichHandler is mocked to prevent console output during test
-    # The patches should refer to 'logger.datetime' if logger.py is the module where datetime is used by setup_logging
-    with patch('logger.datetime', mock_dt), \
-         patch('rich.logging.RichHandler', MagicMock()):
+    # The patches should refer to 'src.logger.datetime' if logger.py is the module where datetime is used by setup_logging
+    with patch('src.logger.datetime', mock_dt), \
+         patch('src.logger.RichHandler', mock_rich_handler_class), \
+         patch('src.logger.logging.FileHandler', mock_file_handler_class):
 
         setup_logging(log_dir=log_dir_path, log_level=logging.INFO)
         # Get a logger instance after setup
@@ -237,9 +242,9 @@ def test_logger_integration(temp_log_dir):
 def test_get_logger():
     """Test that get_logger returns the underlying logger instance."""
     with patch('os.path.exists', return_value=True), \
-         patch('logging.getLogger') as mock_get_logger, \
-         patch('logging.FileHandler'), \
-         patch('rich.logging.RichHandler'):
+         patch('src.logger.logging.getLogger') as mock_get_logger, \
+         patch('src.logger.logging.FileHandler'), \
+         patch('src.logger.RichHandler'):
 
         mock_logger_instance = MagicMock()
         mock_logger_instance.hasHandlers.return_value = True

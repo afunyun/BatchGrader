@@ -7,7 +7,7 @@ import csv
 import pytest
 from unittest.mock import patch, mock_open
 
-from cost_estimator import CostEstimator
+from src.cost_estimator import CostEstimator
 
 
 @pytest.fixture

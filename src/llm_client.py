@@ -11,11 +11,11 @@ import openai
 from openai import OpenAI
 from rich.console import Console
 
-from constants import (BATCH_API_ENDPOINT, DEFAULT_BATCH_DESCRIPTION,
-                       DEFAULT_MODEL, DEFAULT_POLL_INTERVAL)
+from src.constants import (BATCH_API_ENDPOINT, DEFAULT_BATCH_DESCRIPTION,
+                           DEFAULT_MODEL, DEFAULT_POLL_INTERVAL)
 # from logger import logger as global_logger_instance # DEPRECATED
-from token_utils import count_tokens_in_content
-from utils import get_encoder
+from src.token_utils import count_tokens_in_content
+from src.utils import get_encoder
 
 logger = logging.getLogger(__name__)
 

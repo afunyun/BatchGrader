@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from unittest.mock import patch, mock_open, MagicMock, call, Mock
 
-from file_utils import prune_chunked_dir
+from src.file_utils import prune_chunked_dir
 
 
 @pytest.fixture

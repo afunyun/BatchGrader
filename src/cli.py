@@ -3,10 +3,10 @@ import sys
 from pathlib import Path
 import logging
 
-from batch_runner import run_batch_processing, run_count_mode, run_split_mode
-from config_loader import load_config
-from constants import LOG_DIR as DEFAULT_LOG_DIR_CONSTANT, PROJECT_ROOT
-from logger import setup_logging
+from src.batch_runner import run_batch_processing, run_count_mode, run_split_mode
+from src.config_loader import load_config
+from src.constants import LOG_DIR as DEFAULT_LOG_DIR_CONSTANT, PROJECT_ROOT
+from src.logger import setup_logging
 
 logger = logging.getLogger(__name__)  # Define logger at module level
 
@@ -76,7 +76,6 @@ def main():
     parser.add_argument(
         "--mode",
         type=str,
-        choices=['batch', 'count', 'split'],
         default='batch',
         help=
         "Operation mode: 'batch' (process files), 'count' (count tokens), 'split' (split files by token limit). Default: batch"

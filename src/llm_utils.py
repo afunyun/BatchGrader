@@ -30,7 +30,7 @@ from typing import Any, Dict, Generic, Optional, TypeVar
 
 import pandas as pd
 
-from llm_client import LLMClient
+from src.llm_client import LLMClient
 
 # Type variable for DataFrame-like objects
 DataFrameT = TypeVar('DataFrameT', bound=pd.DataFrame)

@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import Dict, Optional
 import yaml
 
-from config_loader import CONFIG_DIR, is_examples_file_default
-from evaluator import load_prompt_template
-from constants import DEFAULT_PROMPTS_FILE
+from src.config_loader import CONFIG_DIR, is_examples_file_default
+from src.evaluator import load_prompt_template
+from src.constants import DEFAULT_PROMPTS_FILE
 
 logger = logging.getLogger(__name__)
 

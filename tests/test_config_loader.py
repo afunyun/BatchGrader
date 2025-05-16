@@ -3,7 +3,10 @@ import pytest
 from pathlib import Path
 import yaml
 import tempfile
-from config_loader import load_config, DEFAULT_CONFIG, ensure_config_files, is_examples_file_default
+import logging
+import shutil
+from src.constants import PROJECT_ROOT
+from src.config_loader import load_config, DEFAULT_CONFIG, ensure_config_files, is_examples_file_default, DEFAULT_EXAMPLES_TEXT
 
 
 @pytest.fixture
@@ -131,3 +134,47 @@ def test_is_examples_file_default(tmp_path):
     assert is_examples_file_default(
         tmp_path /
         "nonexistent.txt") is True  # Should return True for missing files
+
+
+def test_ensure_config_files_creates_default_examples(caplog):
+    """
+    Test that ensure_config_files creates a default examples.txt if it's missing.
+    This covers lines 89-92 of config_loader.py.
+    """
+    logger = logging.getLogger("test_config_creation")
+    caplog.set_level(logging.INFO)
+
+    examples_file_path = (PROJECT_ROOT / DEFAULT_CONFIG['examples_dir']).resolve()
+    examples_file_backup_path = examples_file_path.with_suffix(examples_file_path.suffix + ".test_bak")
+
+    file_existed_before_test = examples_file_path.exists()
+
+    try:
+        if file_existed_before_test:
+            shutil.move(str(examples_file_path), str(examples_file_backup_path))
+
+        # Action: Call ensure_config_files
+        ensure_config_files(logger)
+
+        # Assertions
+        assert examples_file_path.exists(), f"Default examples file '{examples_file_path}' was not created."
+        with open(examples_file_path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+        assert content == DEFAULT_EXAMPLES_TEXT, "Content of created examples file does not match default text."
+        
+        # Check for the specific log message related to examples.txt creation
+        assert f"Default examples file created at '{examples_file_path}'." in caplog.text, "Log message for examples file creation not found."
+
+    finally:
+        # Teardown: Remove the examples file that was potentially created by ensure_config_files
+        if examples_file_path.exists():
+            os.remove(examples_file_path)
+
+        # Restore the backup if it was made
+        if file_existed_before_test and examples_file_backup_path.exists():
+            shutil.move(str(examples_file_backup_path), str(examples_file_path))
+        elif file_existed_before_test and not examples_file_backup_path.exists():
+            # This case might occur if the backup move failed or the backup was unexpectedly removed.
+            # For robustness, if the original file existed but backup is gone, try to recreate a default one to leave system in a known state.
+            # Or, simply log a warning that restoration failed.
+            logger.warning(f"Could not restore {examples_file_path} from {examples_file_backup_path} as backup was not found.")

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open, Mock
 from unittest.mock import call
 
-from log_utils import prune_logs_if_needed
+from src.log_utils import prune_logs_if_needed
 
 
 @pytest.fixture

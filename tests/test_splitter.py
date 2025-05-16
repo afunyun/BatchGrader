@@ -21,12 +21,12 @@ from pathlib import Path
 
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from input_splitter import (split_file_by_token_limit, InputSplitterError,
-                            MissingArgumentError, FileNotFoundError,
-                            UnsupportedFileTypeError, OutputDirectoryError)
-from utils import deep_merge_dicts
-from constants import DEFAULT_PRICING_CSV_PATH
-from token_tracker import _load_pricing
+from src.input_splitter import (split_file_by_token_limit, InputSplitterError,
+                             MissingArgumentError, FileNotFoundError,
+                             UnsupportedFileTypeError, OutputDirectoryError)
+from src.utils import deep_merge_dicts
+from src.constants import DEFAULT_PRICING_CSV_PATH
+from src.token_tracker import _load_pricing
 
 TEST_INPUT_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), 'input'))

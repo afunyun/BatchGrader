@@ -6,13 +6,13 @@ import os
 from pathlib import Path
 import pytest
 
-from constants import (PROJECT_ROOT, DEFAULT_LOG_DIR, DEFAULT_ARCHIVE_DIR,
-                       LOG_DIR, ARCHIVE_DIR, MAX_BATCH_SIZE, DEFAULT_MODEL,
-                       DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_SPLIT_TOKEN_LIMIT,
-                       DEFAULT_RESPONSE_FIELD, DEFAULT_TOKEN_USAGE_LOG_PATH,
-                       DEFAULT_EVENT_LOG_PATH, DEFAULT_PRICING_CSV_PATH,
-                       BATCH_API_ENDPOINT, DEFAULT_PROMPTS_FILE,
-                       DEFAULT_BATCH_DESCRIPTION, DEFAULT_POLL_INTERVAL)
+from src.constants import (PROJECT_ROOT, DEFAULT_LOG_DIR, DEFAULT_ARCHIVE_DIR,
+                        LOG_DIR, ARCHIVE_DIR, MAX_BATCH_SIZE, DEFAULT_MODEL,
+                        DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_SPLIT_TOKEN_LIMIT,
+                        DEFAULT_RESPONSE_FIELD, DEFAULT_TOKEN_USAGE_LOG_PATH,
+                        DEFAULT_EVENT_LOG_PATH, DEFAULT_PRICING_CSV_PATH,
+                        BATCH_API_ENDPOINT, DEFAULT_PROMPTS_FILE,
+                        DEFAULT_BATCH_DESCRIPTION, DEFAULT_POLL_INTERVAL)
 
 
 def test_project_root():

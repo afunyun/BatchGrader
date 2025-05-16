@@ -3,7 +3,7 @@ import pytest
 import pandas as pd
 import json
 import tempfile
-from data_loader import load_data, save_data
+from src.data_loader import load_data, save_data
 
 
 @pytest.fixture
