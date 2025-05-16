@@ -17,5 +17,6 @@ def replace_csv_values(filepath, placeholder="PLACEHOLDER"):
         writer = csv.writer(outfile)
         writer.writerows(rows)
 
+
 replace_csv_values(filepath)
 print(f"All values in '{filepath}' have been replaced with 'PLACEHOLDER'.")

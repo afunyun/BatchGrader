@@ -1,7 +1,9 @@
-import logging
-from typing import Callable, Any, Dict, Union, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
+
 from pandas import DataFrame, Series
+
 from logger import logger
+
 
 class TokenLimitExceededError(Exception):
     """Raised when token limit is exceeded"""
@@ -22,11 +24,13 @@ def count_tokens_in_content(content: str, encoder: Any) -> int:
     try:
         return len(encoder.encode(str(content)))
     except Exception as e:
-        logger.error(f"Token encoding failed for content: {str(content)[:50]}... : {e}")
+        logger.error(
+            f"Token encoding failed for content: {str(content)[:50]}... : {e}")
         return 0
 
 
-def count_input_tokens(row: Dict[str, Any], system_prompt: str, response_field: str, encoder: Any) -> int:
+def count_input_tokens(row: Dict[str, Any], system_prompt: str,
+                       response_field: str, encoder: Any) -> int:
     """
     Count tokens for a user prompt input row, including system prompt and user content.
 
@@ -45,7 +49,9 @@ def count_input_tokens(row: Dict[str, Any], system_prompt: str, response_field: 
     return sys_tokens + user_tokens
 
 
-def count_completion_tokens(row: Dict[str, Any], encoder: Any, field: str = 'llm_score') -> int:
+def count_completion_tokens(row: Dict[str, Any],
+                            encoder: Any,
+                            field: str = 'llm_score') -> int:
     """
     Count tokens in the LLM completion stored in the specified field.
 
@@ -62,10 +68,10 @@ def count_completion_tokens(row: Dict[str, Any], encoder: Any, field: str = 'llm
 
 
 def create_token_counter(
-    system_prompt_content: str, 
-    response_field: str, 
-    encoder: Any,
-    prompt_template: Optional[str] = None
+        system_prompt_content: str,
+        response_field: str,
+        encoder: Any,
+        prompt_template: Optional[str] = None
 ) -> Callable[[Dict[str, Any]], int]:
     """
     Create a token counter function for processing DataFrame rows.
@@ -80,30 +86,25 @@ def create_token_counter(
     Returns:
         Callable: A function that takes a row dict and returns token count
     """
+
     def token_counter(row: Dict[str, Any]) -> int:
         user_content = str(row.get(response_field, ''))
-        system_content = system_prompt_content 
-        
+        system_content = system_prompt_content
+
         if prompt_template:
-            prompt_text = prompt_template.format(
-                system=system_content,
-                user=user_content
-            )
+            prompt_text = prompt_template.format(system=system_content,
+                                                 user=user_content)
         else:
             prompt_text = f"{system_content}\n{user_content}"
-            
+
         return len(encoder.encode(prompt_text))
-        
+
     return token_counter
 
 
-def count_tokens_in_df(
-    df: DataFrame, 
-    system_prompt_content: str, 
-    response_field: str, 
-    encoder: Any,
-    **kwargs: Any
-) -> Series:
+def count_tokens_in_df(df: DataFrame, system_prompt_content: str,
+                       response_field: str, encoder: Any,
+                       **kwargs: Any) -> Series:
     """
     Count tokens for each row in a DataFrame.
 
@@ -121,8 +122,7 @@ def count_tokens_in_df(
         system_prompt_content=system_prompt_content,
         response_field=response_field,
         encoder=encoder,
-        **kwargs
-    )
+        **kwargs)
     return df.apply(token_counter, axis=1)
 
 
@@ -143,11 +143,9 @@ def calculate_token_stats(token_counts: Series) -> Dict[str, float]:
     }
 
 
-def check_token_limit(
-    token_stats: Dict[str, float], 
-    token_limit: int, 
-    raise_on_exceed: bool = False
-) -> bool:
+def check_token_limit(token_stats: Dict[str, float],
+                      token_limit: int,
+                      raise_on_exceed: bool = False) -> bool:
     """
     Check if token usage exceeds the specified limit.
     
@@ -163,12 +161,11 @@ def check_token_limit(
         TokenLimitExceededError: If raise_on_exceed is True and limit is exceeded
     """
     is_under_limit = token_stats['total'] <= token_limit
-    
+
     if not is_under_limit and raise_on_exceed:
         raise TokenLimitExceededError(
-            f"Token limit exceeded: {token_stats['total']} > {token_limit}"
-        )
-        
+            f"Token limit exceeded: {token_stats['total']} > {token_limit}")
+
     return is_under_limit
 
 
@@ -182,9 +179,7 @@ def get_token_count_message(token_stats: Dict[str, float]) -> str:
     Returns:
         Formatted string with token statistics
     """
-    return (
-        f"[TOKEN COUNT] "
-        f"Total: {int(token_stats['total'])}, "
-        f"Avg: {token_stats['average']:.1f}, "
-        f"Max: {int(token_stats['max'])}"
-    )
+    return (f"[TOKEN COUNT] "
+            f"Total: {int(token_stats['total'])}, "
+            f"Avg: {token_stats['average']:.1f}, "
+            f"Max: {int(token_stats['max'])}")

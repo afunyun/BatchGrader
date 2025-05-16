@@ -1,5 +1,5 @@
-import os
 from pathlib import Path
+
 from config_loader import CONFIG_DIR, is_examples_file_default
 from evaluator import load_prompt_template
 from logger import logger
@@ -34,7 +34,8 @@ def load_system_prompt(config: dict) -> str:
 
     # Load and format custom examples
     if not abs_examples_path.exists():
-        raise FileNotFoundError(f"Examples file not found: {abs_examples_path}.")
+        raise FileNotFoundError(
+            f"Examples file not found: {abs_examples_path}.")
 
     with open(abs_examples_path, 'r', encoding='utf-8') as ex_f:
         example_lines = [line.strip() for line in ex_f if line.strip()]
@@ -44,6 +45,7 @@ def load_system_prompt(config: dict) -> str:
     formatted_examples = '\n'.join(f"- {ex}" for ex in example_lines)
     system_prompt_template = load_prompt_template("batch_evaluation_prompt")
     if '{dynamic_examples}' not in system_prompt_template:
-        raise ValueError("'{dynamic_examples}' placeholder missing in prompt template.")
+        raise ValueError(
+            "'{dynamic_examples}' placeholder missing in prompt template.")
 
-    return system_prompt_template.format(dynamic_examples=formatted_examples) 
+    return system_prompt_template.format(dynamic_examples=formatted_examples)

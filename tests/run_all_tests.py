@@ -45,16 +45,22 @@ test_cases = [
         'name': 'Concurrency Limit',
         'input': 'tests/input/chunking_large.csv',
         'config': 'tests/test_config_concurrency.yaml',
-        'expected_output': 'tests/output/chunking_large_concurrency_results.csv',
+        'expected_output':
+        'tests/output/chunking_large_concurrency_results.csv',
         'expected_rows': 100,
         'expected_log_msgs': ['Splitting input file'],
     },
     {
-        'name': 'Continue on Chunk Failure',
-        'input': 'tests/input/chunk_with_failure.csv',
-        'config': 'tests/test_config_continue_on_failure.yaml',
-        'expected_output': 'tests/output/chunk_with_failure_results.csv', 
-        'expected_rows': 3, 
+        'name':
+        'Continue on Chunk Failure',
+        'input':
+        'tests/input/chunk_with_failure.csv',
+        'config':
+        'tests/test_config_continue_on_failure.yaml',
+        'expected_output':
+        'tests/output/chunk_with_failure_results.csv',
+        'expected_rows':
+        3,
         'expected_log_msgs': [
             "Generated 5 BatchJob objects for chunk_with_failure.csv",
             "Simulating failure for chunk: chunk_with_failure_chunk_2 due to TEST_KEY_FAIL_CONTINUE",
@@ -72,26 +78,28 @@ test_cases = [
     },
 ]
 
-invalid_config_cases = [
-    {
-        'name': 'Missing Required Fields',
-        'input': 'tests/input/small_legacy.csv',
-        'config': 'tests/config/invalid_missing_required.yaml',
-        'expect_error': True,
-        'expected_log_msgs': ['Missing required config fields']
-    },
-    {
-        'name': 'Invalid Output Format',
-        'input': 'tests/input/small_legacy.csv',
-        'config': 'tests/config/invalid_output_format.yaml',
-        'expect_error': True,
-        'expected_log_msgs': ['Invalid output_format']
-    }
-]
+invalid_config_cases = [{
+    'name': 'Missing Required Fields',
+    'input': 'tests/input/small_legacy.csv',
+    'config': 'tests/config/invalid_missing_required.yaml',
+    'expect_error': True,
+    'expected_log_msgs': ['Missing required config fields']
+}, {
+    'name': 'Invalid Output Format',
+    'input': 'tests/input/small_legacy.csv',
+    'config': 'tests/config/invalid_output_format.yaml',
+    'expect_error': True,
+    'expected_log_msgs': ['Invalid output_format']
+}]
+
 
 def get_latest_log():
-    logs = sorted(glob.glob('output/logs/batchgrader_run_*.log'), key=os.path.getmtime, reverse=True)
+    logs = sorted(glob.glob('output/logs/batchgrader_run_*.log'),
+                  key=os.path.getmtime,
+                  reverse=True)
     return logs[0] if logs else None
+
+
 def check_output_file(path, expected_rows):
     if not os.path.exists(path):
         return False, f"Output file missing: {path}"
@@ -103,6 +111,7 @@ def check_output_file(path, expected_rows):
         return False, f"Error reading output file: {e}"
     return True, "Output file OK"
 
+
 def check_log_messages(log_path, expected_msgs):
     if not os.path.exists(log_path):
         return False, f"Log file missing: {log_path}"
@@ -113,6 +122,7 @@ def check_log_messages(log_path, expected_msgs):
         return False, f"Missing log messages: {missing}"
     return True, "Log messages OK"
 
+
 def run_test(test):
     print(f"\n=== Running Test: {test['name']} ===")
     if 'expected_output' in test and test['expected_output']:
@@ -120,7 +130,9 @@ def run_test(test):
             if os.path.exists(test['expected_output']):
                 os.remove(test['expected_output'])
         except Exception as e:
-            print(f"Warning: Failed to remove old output file {test['expected_output']}: {e}")
+            print(
+                f"Warning: Failed to remove old output file {test['expected_output']}: {e}"
+            )
     log_path = None
     if 'expected_log_msgs' in test:
         log_path = get_latest_log()
@@ -130,9 +142,8 @@ def run_test(test):
         except Exception as e:
             print(f"Warning: Failed to remove old log file {log_path}: {e}")
     cmd = [
-        sys.executable, '-u', 'src/batch_runner.py',
-        '--config', test['config'],
-        '--file', test['input']
+        sys.executable, '-u', 'src/batch_runner.py', '--config',
+        test['config'], '--file', test['input']
     ]
     env = os.environ.copy()
     env['PYTHONPATH'] = str(Path(__file__).parent.parent.resolve())
@@ -140,7 +151,8 @@ def run_test(test):
     summary = {'name': test['name']}
     summary['exit_code'] = result.returncode
     if 'expected_output' in test and 'expected_rows' in test:
-        ok, msg = check_output_file(test['expected_output'], test['expected_rows'])
+        ok, msg = check_output_file(test['expected_output'],
+                                    test['expected_rows'])
         summary['output_file'] = msg
         summary['output_file_pass'] = ok
     if 'expected_log_msgs' in test:
@@ -148,10 +160,11 @@ def run_test(test):
         ok, msg = check_log_messages(log_path, test['expected_log_msgs'])
         summary['log_check'] = msg
         summary['log_check_pass'] = ok
-    summary['pass'] = (result.returncode == 0 and
-                    summary.get('output_file_pass', True) and
-                    summary.get('log_check_pass', True))
+    summary['pass'] = (result.returncode == 0
+                       and summary.get('output_file_pass', True)
+                       and summary.get('log_check_pass', True))
     return summary
+
 
 def run_invalid_config_test(test):
     print(f"\n=== Running Invalid Config Test: {test['name']} ===")
@@ -163,9 +176,8 @@ def run_invalid_config_test(test):
     except Exception as e:
         print(f"Warning: Failed to remove old log file {latest_log}: {e}")
     cmd = [
-        sys.executable, '-u', 'src/batch_runner.py',
-        '--config', test['config'],
-        '--file', test['input']
+        sys.executable, '-u', 'src/batch_runner.py', '--config',
+        test['config'], '--file', test['input']
     ]
     env = os.environ.copy()
     env['PYTHONPATH'] = str(Path(__file__).parent.parent.resolve())
@@ -177,11 +189,15 @@ def run_invalid_config_test(test):
     summary['log_check'] = msg
     summary['log_check_pass'] = ok
     summary['error_expected'] = test.get('expect_error', False)
-    summary['pass'] = (result.returncode != 0 if test.get('expect_error', False) else result.returncode == 0) and ok
+    summary['pass'] = (result.returncode != 0 if test.get(
+        'expect_error', False) else result.returncode == 0) and ok
     return summary
 
+
 def main():
-    print("\nBatchGrader Automated Integration Test Runner\n============================================")
+    print(
+        "\nBatchGrader Automated Integration Test Runner\n============================================"
+    )
     results = []
     for test in test_cases:
         results.append(run_test(test))
@@ -197,6 +213,7 @@ def main():
             if 'log_check' in r:
                 print(f"  - Log check: {r['log_check']}")
     print("\nDone.")
+
 
 if __name__ == "__main__":
     main()

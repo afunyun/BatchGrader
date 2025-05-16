@@ -22,4 +22,4 @@ DEFAULT_GLOBAL_TOKEN_LIMIT: int = 2_000_000
 DEFAULT_SPLIT_TOKEN_LIMIT: int = 500_000
 
 # Response field default (if not in config)
-DEFAULT_RESPONSE_FIELD: str = "llm_response" 
+DEFAULT_RESPONSE_FIELD: str = "llm_response"

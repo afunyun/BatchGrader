@@ -127,7 +127,7 @@ All configuration is managed via simple YAML.
 
 3. **Usage**
 
-   - Always make sure your `.venv` is active—if it's not, something _will_ break, almost guaranteed.
+   - Always make sure your `.venv` is active—if it's not, something *will* break, almost guaranteed.
    - Rename `config/config.yaml.example` to `config/config.yaml` and fill in the values.
      (If you get a config loading error, check that these files are in the expected `/config` location.)
    - Then run:

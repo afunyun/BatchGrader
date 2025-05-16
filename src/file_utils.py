@@ -6,9 +6,7 @@ Deletes all files in the given _chunked directory except for .keep.
 Safe for use after chunked job completion (original user inputs are never deleted).
 """
 import os
-import glob
-from pathlib import Path
-from config_loader import load_config
+
 
 def prune_chunked_dir(chunked_dir):
     """

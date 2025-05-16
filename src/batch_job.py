@@ -27,25 +27,28 @@ Methods:
     get_status_log_str(): Returns a formatted string for logging this job's current state.
 """
 
-import pandas as pd
+from typing import Any, Dict, Optional, Union
 import os
-from typing import Optional, Union
+
+import pandas as pd
+
 
 class BatchJob:
+
     def __init__(self,
-                chunk_id_str: str,
-                chunk_df: Optional[pd.DataFrame],
-                system_prompt: str,
-                response_field: str,
-                original_filepath: str,
-                chunk_file_path: str,
-                llm_model: Optional[str] = None,
-                api_key_prefix: Optional[str] = None,
-                status: str = "pending",
-                error_message: Optional[str] = None,
-                error_details: Optional[str] = None,
-                result_data: Optional[Union[pd.DataFrame, dict]] = None):
-        
+                 chunk_id_str: str,
+                 chunk_df: Optional[pd.DataFrame],
+                 system_prompt: str,
+                 response_field: str,
+                 original_filepath: str,
+                 chunk_file_path: str,
+                 llm_model: Optional[str] = None,
+                 api_key_prefix: Optional[str] = None,
+                 status: str = "pending",
+                 error_message: Optional[str] = None,
+                 error_details: Optional[str] = None,
+                 result_data: Optional[Union[pd.DataFrame, dict]] = None):
+
         self.chunk_id_str = chunk_id_str
         self.chunk_df = chunk_df
         self.system_prompt = system_prompt
@@ -54,15 +57,15 @@ class BatchJob:
         self.chunk_file_path = chunk_file_path
         self.llm_model = llm_model
         self.api_key_prefix = api_key_prefix
-        
+
         self.status = status
         self.error_message = error_message
         self.error_details = error_details
         self.result_data = result_data
 
-        self.openai_batch_id: Optional[str] = None 
+        self.openai_batch_id: Optional[str] = None
         self.input_file_id_for_chunk: Optional[str] = None
-        
+
         self.input_tokens: int = 0
         self.output_tokens: int = 0
         self.cost: float = 0.0

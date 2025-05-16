@@ -1,17 +1,22 @@
-import os
-import yaml
 from pathlib import Path
-from utils import ensure_config_files_exist as util_ensure_config_files_exist, deep_merge_dicts
+import os
+
+import yaml
+
 from logger import logger as global_logger
+from utils import ensure_config_files_exist as util_ensure_config_files_exist, deep_merge_dicts
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / 'config'
 CONFIG_PATH = CONFIG_DIR / 'config.yaml'
 PROMPTS_PATH = CONFIG_DIR / 'prompts.yaml'
 
 DEFAULT_CONFIG = {
-    'max_simultaneous_batches': 2,  # TESTING Number of parallel batch jobs per input file (concurrent chunk processing)
-    'force_chunk_count': 0,         # TESTING If >1, forcibly split input into this many chunks regardless of token limits (for speed)
-    'halt_on_chunk_failure': True,  # TESTING If True, aborts remaining chunks for a file if any chunk fails critically
+    'max_simultaneous_batches':
+    2,  # TESTING Number of parallel batch jobs per input file (concurrent chunk processing)
+    'force_chunk_count':
+    0,  # TESTING If >1, forcibly split input into this many chunks regardless of token limits (for speed)
+    'halt_on_chunk_failure':
+    True,  # TESTING If True, aborts remaining chunks for a file if any chunk fails critically
     'input_dir': '../input',
     'output_dir': '../output',
     'examples_dir': '../examples/examples.txt',
@@ -24,9 +29,9 @@ DEFAULT_CONFIG = {
     'batch_api_endpoint': '/v1/chat/completions',
     'token_limit': 2_000_000,
     'split_token_limit': 500_000,  # Max tokens per split file (default ~500k)
-    'split_row_limit': None        # Max rows per split file (optional, default: unlimited)
+    'split_row_limit':
+    None  # Max rows per split file (optional, default: unlimited)
 }
-
 """
 Event Dictionary (Table 1)
 -------------------------
@@ -39,28 +44,28 @@ Event Dictionary (Table 1)
 DEFAULT_EXAMPLES_TEXT = "This file would contain examples of the target style. If you want it to be used in the prompt, add it to the config.yaml file."
 
 DEFAULT_PROMPTS = {
-    'batch_evaluation_prompt': (
-        'You are an evaluator trying to determins the closeness of a response to a given style, examples of which will follow. Given the following examples, evaluate whether or not the response matches the target style.\n\n'
-        'Examples:\n{dynamic_examples}\n\n'
-        'Scoring should be as follows:\n'
-        '5 - Perfect match\n'
-        '4 - Very close\n'
-        '3 - Somewhat close\n'
-        '2 - Not close\n'
-        '1 - No match\n\n'
-        'Output only the numerical scores, one per line, in the same order as inputs.'
-    ),
-    'batch_evaluation_prompt_generic': (
-        'You are an evaluator. Given the following message, rate its overall quality on a scale of 1 to 5.\n\n'
-        'The scale is as follows:\n'
-        '5 - Excellent\n'
-        '4 - Good\n'
-        '3 - Average\n'
-        '2 - Poor\n'
-        '1 - Very poor\n\n'
-        'Output only the numerical score.'
-    )
+    'batch_evaluation_prompt':
+    ('You are an evaluator trying to determins the closeness of a response to a given style, examples of which will follow. Given the following examples, evaluate whether or not the response matches the target style.\n\n'
+     'Examples:\n{dynamic_examples}\n\n'
+     'Scoring should be as follows:\n'
+     '5 - Perfect match\n'
+     '4 - Very close\n'
+     '3 - Somewhat close\n'
+     '2 - Not close\n'
+     '1 - No match\n\n'
+     'Output only the numerical scores, one per line, in the same order as inputs.'
+     ),
+    'batch_evaluation_prompt_generic':
+    ('You are an evaluator. Given the following message, rate its overall quality on a scale of 1 to 5.\n\n'
+     'The scale is as follows:\n'
+     '5 - Excellent\n'
+     '4 - Good\n'
+     '3 - Average\n'
+     '2 - Poor\n'
+     '1 - Very poor\n\n'
+     'Output only the numerical score.')
 }
+
 
 def ensure_config_files(logger):
     '''
@@ -70,7 +75,8 @@ def ensure_config_files(logger):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     input_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['input_dir']).resolve()
     output_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['output_dir']).resolve()
-    examples_dir = (CONFIG_DIR.parent / DEFAULT_CONFIG['examples_dir']).resolve()
+    examples_dir = (CONFIG_DIR.parent /
+                    DEFAULT_CONFIG['examples_dir']).resolve()
 
     input_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -83,6 +89,7 @@ def ensure_config_files(logger):
 
     util_ensure_config_files_exist(logger)
 
+
 def is_examples_file_default(examples_path):
     """
     Checks if the examples file contains only the default text (i.e., not customized by the user).
@@ -92,7 +99,8 @@ def is_examples_file_default(examples_path):
             content = f.read().strip()
         return content == DEFAULT_EXAMPLES_TEXT
     except Exception:
-        return True 
+        return True
+
 
 def load_config(config_path=None):
     """
@@ -127,4 +135,4 @@ def load_config(config_path=None):
     env_api_key = os.getenv('OPENAI_API_KEY')
     if env_api_key:
         config['openai_api_key'] = env_api_key
-    return config 
+    return config

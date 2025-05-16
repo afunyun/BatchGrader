@@ -1,8 +1,8 @@
-import pandas as pd
 import json
-import os
 from pathlib import Path
-from config_loader import load_config
+
+import pandas as pd
+
 
 def load_data(filepath):
     if filepath.endswith('.csv'):
@@ -13,6 +13,7 @@ def load_data(filepath):
         return pd.read_json(filepath, lines=True)
     else:
         raise ValueError("Unsupported file format")
+
 
 def save_data(df, filepath):
     if filepath.endswith('.csv'):

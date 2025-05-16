@@ -46,32 +46,33 @@ def test_processing_result():
     """Test the ProcessingResult dataclass."""
     # Test with minimal required fields
     start_time = datetime(2023, 1, 1, tzinfo=timezone.utc).timestamp()
-    result = ProcessingResult[pd.DataFrame](
-        success=True,
-        data=pd.DataFrame({'a': [1, 2]}),
-        token_usage={'input_tokens': 10, 'output_tokens': 5},
-        start_time=start_time
-    )
-    
+    result = ProcessingResult[pd.DataFrame](success=True,
+                                            data=pd.DataFrame({'a': [1, 2]}),
+                                            token_usage={
+                                                'input_tokens': 10,
+                                                'output_tokens': 5
+                                            },
+                                            start_time=start_time)
+
     assert result.success is True
     assert len(result.data) == 2
     assert result.token_usage['input_tokens'] == 10
     assert result.duration is None  # end_time not set
-    
+
     # Test to_dict method
     result_dict = result.to_dict()
     assert result_dict['success'] is True
     assert len(result_dict['data']) == 2
     assert result_dict['token_usage']['input_tokens'] == 10
     assert result_dict['start_time'] == start_time
-    
+
     # Test from_exception
     exc = ValueError("Test error")
     error_result = ProcessingResult.from_exception(exc)
     assert error_result.success is False
     assert str(error_result.error) == "Test error"
     assert error_result.token_usage == {}
-    
+
     # Test with_data
     new_data = pd.DataFrame({'b': [3, 4, 5]})
     new_result = result.with_data(new_data)
@@ -87,10 +88,10 @@ async def test_get_llm_client(mock_llm_client):
     client = get_llm_client()
     assert client is not None
     assert isinstance(client, MagicMock)
-    
+
     # Verify the client was created with default parameters
     mock_llm_client.assert_called_once()
-    
+
     # Test that process_batch can be called (mocked)
     # This was removed if it's no longer supported
     # result = await client.process_batch(pd.DataFrame())

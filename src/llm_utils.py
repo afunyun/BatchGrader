@@ -25,19 +25,18 @@ Example usage:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, Callable, Tuple, Union, TypeVar, Generic, TypeVar as TypeVarT
-import pandas as pd
 from datetime import datetime, timezone
-import os
-from pathlib import Path
+from typing import Any, Callable, Dict, Generic, Optional, TypeVar, Union
+
+import pandas as pd
 
 from llm_client import LLMClient
 from logger import logger
 
 # Type variable for DataFrame-like objects
 DataFrameT = TypeVar('DataFrameT', bound=pd.DataFrame)
+T = TypeVar('T', bound=pd.DataFrame)
 
-T = TypeVarT('T', bound=pd.DataFrame)
 
 @dataclass
 class ProcessingResult(Generic[T]):
@@ -56,14 +55,15 @@ class ProcessingResult(Generic[T]):
     data: Optional[T] = None
     error: Optional[Exception] = None
     token_usage: Dict[str, Any] = field(default_factory=dict)
-    start_time: Optional[float] = field(default_factory=lambda: datetime.now(timezone.utc).timestamp())
+    start_time: Optional[float] = field(
+        default_factory=lambda: datetime.now(timezone.utc).timestamp())
     end_time: Optional[float] = None
     duration: Optional[float] = None
-    
+
     def __post_init__(self):
         if self.end_time is not None and self.start_time is not None:
             self.duration = self.end_time - self.start_time
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary.
         
@@ -72,14 +72,15 @@ class ProcessingResult(Generic[T]):
         """
         return {
             'success': self.success,
-            'data': self.data.to_dict('records') if self.data is not None else None,
+            'data':
+            self.data.to_dict('records') if self.data is not None else None,
             'error': str(self.error) if self.error else None,
             'token_usage': self.token_usage,
             'start_time': self.start_time,
             'end_time': self.end_time,
             'duration': self.duration
         }
-    
+
     @classmethod
     def from_exception(cls, error: Exception) -> 'ProcessingResult':
         """Create a failed result from an exception.
@@ -90,12 +91,10 @@ class ProcessingResult(Generic[T]):
         Returns:
             ProcessingResult with error state
         """
-        return cls(
-            success=False,
-            error=error,
-            end_time=datetime.now(timezone.utc).timestamp()
-        )
-    
+        return cls(success=False,
+                   error=error,
+                   end_time=datetime.now(timezone.utc).timestamp())
+
     def with_data(self, data: T) -> 'ProcessingResult[T]':
         """Create a new result with updated data.
         
@@ -105,15 +104,14 @@ class ProcessingResult(Generic[T]):
         Returns:
             New ProcessingResult with updated data
         """
-        return ProcessingResult(
-            success=self.success,
-            data=data,
-            error=self.error,
-            token_usage=dict(self.token_usage),
-            start_time=self.start_time,
-            end_time=self.end_time,
-            duration=self.duration
-        )
+        return ProcessingResult(success=self.success,
+                                data=data,
+                                error=self.error,
+                                token_usage=dict(self.token_usage),
+                                start_time=self.start_time,
+                                end_time=self.end_time,
+                                duration=self.duration)
+
 
 def get_llm_client() -> LLMClient:
     """

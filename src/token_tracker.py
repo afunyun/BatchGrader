@@ -19,28 +19,35 @@ Event Schema (token_usage_event):
 
 Cost is calculated using model pricing from docs/pricing.csv (per 1M tokens, input/output).
 """
-import os
-import json
 import csv
-from pathlib import Path
-import pandas as pd
-import uuid
-from config_loader import load_config
-config = load_config()
-from datetime import datetime
-from typing import Optional, List, Dict, TextIO
+import json
 import logging
+import os
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, TextIO
+
+import pandas as pd
+
+from config_loader import load_config
 
 logger = logging.getLogger(__name__)
 
-LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'token_usage_log.json')
-EVENT_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'token_usage_events.jsonl')
-PRICING_CSV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'pricing.csv')
+config = load_config()
+LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output',
+                        'token_usage_log.json')
+EVENT_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                              'output', 'token_usage_events.jsonl')
+PRICING_CSV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                'docs', 'pricing.csv')
+
 
 def _get_api_key_prefix(api_key):
     if not api_key or len(api_key) < 10:
         return '****'
     return api_key[:10] + '**********'
+
 
 def _load_pricing() -> Dict[str, Dict[str, float]]:
     """
@@ -52,17 +59,19 @@ def _load_pricing() -> Dict[str, Dict[str, float]]:
         raise FileNotFoundError(f"Pricing file not found: {PRICING_CSV_PATH}")
     pricing = {}
     with open(PRICING_CSV_PATH, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f) # type: ignore
+        reader = csv.DictReader(f)  # type: ignore
         for row in reader:
             model = row['Model']
             try:
                 input_price = float(row['Input'])
                 output_price = float(row['Output'])
             except (ValueError, KeyError) as e:
-                logger.warning(f"Skipping pricing row due to error: {row}. Error: {e}")
+                logger.warning(
+                    f"Skipping pricing row due to error: {row}. Error: {e}")
                 continue
             pricing[model] = {'input': input_price, 'output': output_price}
     return pricing
+
 
 def _load_log():
     if not os.path.exists(LOG_PATH):
@@ -73,10 +82,12 @@ def _load_log():
     except Exception:
         return []
 
+
 def _save_log(log):
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     with open(LOG_PATH, 'w', encoding='utf-8') as f:
         json.dump(log, f, indent=2)
+
 
 def update_token_log(api_key, tokens_submitted, date_str=None):
     """
@@ -98,7 +109,13 @@ def update_token_log(api_key, tokens_submitted, date_str=None):
     })
     _save_log(log)
 
-def log_token_usage_event(api_key: str, model: str, input_tokens: int, output_tokens: int, timestamp: Optional[str]=None, request_id: Optional[str]=None):
+
+def log_token_usage_event(api_key: str,
+                          model: str,
+                          input_tokens: int,
+                          output_tokens: int,
+                          timestamp: Optional[str] = None,
+                          request_id: Optional[str] = None):
     """
     Log a single successful API request to the append-only event log (JSONL).
     Calculates cost using pricing table (per 1M tokens). Only call after a successful response.
@@ -109,8 +126,9 @@ def log_token_usage_event(api_key: str, model: str, input_tokens: int, output_to
     else:
         input_price = pricing[model]['input']
         output_price = pricing[model]['output']
-        
-    cost = (input_tokens * input_price + output_tokens * output_price) / 1_000_000.0
+
+    cost = (input_tokens * input_price +
+            output_tokens * output_price) / 1_000_000.0
     event = {
         'timestamp': timestamp or datetime.now().isoformat(),
         'api_key_prefix': _get_api_key_prefix(api_key),
@@ -126,6 +144,7 @@ def log_token_usage_event(api_key: str, model: str, input_tokens: int, output_to
     with open(EVENT_LOG_PATH, 'a', encoding='utf-8') as f:
         f.write(json.dumps(event) + '\n')
 
+
 def load_token_usage_events() -> List[Dict]:
     """
     Load all token usage events from the append-only log.
@@ -135,20 +154,26 @@ def load_token_usage_events() -> List[Dict]:
     with open(EVENT_LOG_PATH, 'r', encoding='utf-8') as f:
         return [json.loads(line) for line in f if line.strip()]
 
-def get_token_usage_summary(start_date: Optional[str]=None, end_date: Optional[str]=None, group_by: str='day') -> Dict:
+
+def get_token_usage_summary(start_date: Optional[str] = None,
+                            end_date: Optional[str] = None,
+                            group_by: str = 'day') -> Dict:
     """
     Aggregate token usage and cost over a date range. group_by: 'day'|'model'|'all'.
     Returns: { 'total_tokens': int, 'total_cost': float, 'breakdown': Dict }
     """
     events = load_token_usage_events()
     summary = {'total_tokens': 0, 'total_cost': 0.0, 'breakdown': {}}
+
     def in_range(ts):
         dt = datetime.fromisoformat(ts[:19])
-        if start_date and dt.date() < datetime.fromisoformat(start_date).date():
+        if start_date and dt.date() < datetime.fromisoformat(
+                start_date).date():
             return False
         if end_date and dt.date() > datetime.fromisoformat(end_date).date():
             return False
         return True
+
     for e in events:
         if not in_range(e['timestamp']):
             continue
@@ -163,7 +188,11 @@ def get_token_usage_summary(start_date: Optional[str]=None, end_date: Optional[s
             key = 'all'
         if key:
             if key not in summary['breakdown']:
-                summary['breakdown'][key] = {'tokens': 0, 'cost': 0.0, 'count': 0}
+                summary['breakdown'][key] = {
+                    'tokens': 0,
+                    'cost': 0.0,
+                    'count': 0
+                }
             summary['breakdown'][key]['tokens'] += e['total_tokens']
             summary['breakdown'][key]['cost'] += e['cost']
             summary['breakdown'][key]['count'] += 1
@@ -172,11 +201,15 @@ def get_token_usage_summary(start_date: Optional[str]=None, end_date: Optional[s
         v['cost'] = round(v['cost'], 6)
     return summary
 
-def get_total_cost(start_date: Optional[str]=None, end_date: Optional[str]=None) -> float:
+
+def get_total_cost(start_date: Optional[str] = None,
+                   end_date: Optional[str] = None) -> float:
     """
     Return total cost for the given date range (inclusive).
     """
-    return get_token_usage_summary(start_date, end_date, group_by='all')['total_cost']
+    return get_token_usage_summary(start_date, end_date,
+                                   group_by='all')['total_cost']
+
 
 def get_token_usage_for_day(api_key, date_str=None):
     """
