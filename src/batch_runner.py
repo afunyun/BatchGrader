@@ -146,7 +146,7 @@ def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient, r
     Returns the updated batch_job object.
     """
     if batch_job.chunk_df is None or batch_job.chunk_df.empty:
-        if batch_job.status != "error": # 
+        if batch_job.status != "error": #           
             batch_job.status = "error"
             batch_job.error_message = "Chunk DataFrame is None or empty."
             batch_job.error_details = "Chunk DataFrame was not loaded or was empty when task started."
@@ -352,6 +352,7 @@ def _pfc_aggregate_and_cleanup(completed_jobs_list: list[BatchJob],
 
     combined_df = pd.concat(all_results_dfs, ignore_index=True)
     logger.success(f"Results aggregated for {os.path.basename(original_filepath)}. {total_processed_rows} rows processed.")
+    # Ensure original 'id' column is present if 'custom_id' was used
     if 'custom_id' in combined_df.columns and 'id' not in combined_df.columns:
         combined_df['id'] = combined_df['custom_id']
         logger.debug(f"Added 'id' column to aggregated results, copied from 'custom_id'.")

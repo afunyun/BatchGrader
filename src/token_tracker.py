@@ -25,7 +25,7 @@ import csv
 from src.config_loader import load_config
 config = load_config()
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TextIO
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'token_usage_log.json')
 EVENT_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'token_usage_events.jsonl')
@@ -36,7 +36,7 @@ def _get_api_key_prefix(api_key):
         return '****'
     return api_key[:10] + '**********'
 
-def _load_pricing():
+def _load_pricing() -> Dict[str, Dict[str, float]]:
     """
     Load model pricing from pricing.csv.
     Raises FileNotFoundError if the file is missing.
@@ -45,14 +45,15 @@ def _load_pricing():
     if not os.path.exists(PRICING_CSV_PATH):
         raise FileNotFoundError(f"Pricing file not found: {PRICING_CSV_PATH}")
     pricing = {}
-    with open(PRICING_CSV_PATH, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
+    with open(PRICING_CSV_PATH, 'r', encoding='utf-8') as f: # type: TextIO
+        reader = csv.DictReader(f) # type: ignore
         for row in reader:
             model = row['Model']
             try:
                 input_price = float(row['Input'])
                 output_price = float(row['Output'])
-            except Exception:
+            except (ValueError, KeyError) as e:
+                logger.warning(f"Skipping pricing row due to error: {row}. Error: {e}")
                 continue
             pricing[model] = {'input': input_price, 'output': output_price}
     return pricing
