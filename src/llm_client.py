@@ -11,7 +11,6 @@ from rich.console import Console
 
 from config_loader import load_config
 from logger import logger as global_logger_instance
-from token_tracker import log_token_usage_event
 
 config = load_config()
 

@@ -26,12 +26,11 @@ Example usage:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Generic, Optional, TypeVar, Union
+from typing import Any, Dict, Generic, Optional, TypeVar
 
 import pandas as pd
 
 from llm_client import LLMClient
-from logger import logger
 
 # Type variable for DataFrame-like objects
 DataFrameT = TypeVar('DataFrameT', bound=pd.DataFrame)

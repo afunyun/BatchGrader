@@ -5,6 +5,12 @@ import sys
 
 import yaml
 
+# Default prompts used as fallbacks when prompts.yaml is missing or incomplete
+DEFAULT_PROMPTS = {
+    'evaluation_prompt': 'Default evaluation prompt. Rate on a scale of 1-5.',
+    'batch_prompt': 'Default batch processing prompt.'
+}
+
 
 def load_prompt_template(name='evaluation_prompt'):
     """
@@ -25,7 +31,6 @@ def load_prompt_template(name='evaluation_prompt'):
               file=sys.stderr)
     # fallback to default
     try:
-        from config_loader import DEFAULT_PROMPTS
         if name in DEFAULT_PROMPTS:
             return DEFAULT_PROMPTS[name]
         else:

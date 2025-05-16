@@ -46,6 +46,7 @@ PRICING_CSV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
 def _get_api_key_prefix(api_key):
     if not api_key or len(api_key) < 10:
         return '****'
+    # Make sure to return exactly 10 characters followed by 10 asterisks
     return api_key[:10] + '**********'
 
 
@@ -217,8 +218,11 @@ def get_token_usage_for_day(api_key, date_str=None):
     """
     if not date_str:
         date_str = datetime.now().strftime('%Y-%m-%d')
+
+    # Generate the prefix in the same way it was stored
     prefix = _get_api_key_prefix(api_key)
     log = _load_log()
+
     for entry in log:
         if entry['date'] == date_str and entry['api_key_prefix'] == prefix:
             return entry['tokens_submitted']
