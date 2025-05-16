@@ -7,6 +7,13 @@ Includes:
 """
 import os
 import shutil
+import logging
+from typing import Any, Optional
+from pathlib import Path
+
+import tiktoken
+
+logger = logging.getLogger(__name__)
 
 
 def deep_merge_dicts(a, b):
@@ -34,24 +41,24 @@ def ensure_config_files_exist(logger):
         logger: An instance of the application's logger.
     """
     try:
-        current_script_path = os.path.abspath(__file__)
-        src_dir = os.path.dirname(current_script_path)
-        project_root = os.path.dirname(src_dir)
-        config_dir = os.path.join(project_root, "config")
+        abs_path = os.path.abspath(__file__)
+        src_dir = os.path.dirname(abs_path)
+        project_root_dir = os.path.dirname(src_dir)
+        config_dir = Path(project_root_dir) / "config"
 
         files_to_check = {
             "config.yaml": "config.yaml.example",
             "prompts.yaml": "prompts.yaml.example"
         }
 
-        os.makedirs(config_dir, exist_ok=True)
+        os.makedirs(str(config_dir), exist_ok=True)
 
         for dest_file, src_example_file in files_to_check.items():
-            dest_path = os.path.join(config_dir, dest_file)
-            src_example_path = os.path.join(config_dir, src_example_file)
+            dest_path = config_dir / dest_file
+            src_example_path = config_dir / src_example_file
 
-            if not os.path.exists(dest_path):
-                if os.path.exists(src_example_path):
+            if not os.path.exists(str(dest_path)):
+                if os.path.exists(str(src_example_path)):
                     shutil.copy2(src_example_path, dest_path)
                     logger.info(
                         f"'{dest_path}' not found. Copied from '{src_example_path}'."
@@ -65,3 +72,29 @@ def ensure_config_files_exist(logger):
 
     except Exception as e:
         logger.error(f"Error ensuring config files exist: {e}", exc_info=True)
+
+
+def get_encoder(
+        model_name: Optional[str] = None) -> Optional[tiktoken.Encoding]:
+    """
+    Get a tiktoken encoder for the specified model or a default one.
+    
+    Args:
+        model_name: Optional name of the model to get encoder for. If None, uses cl100k_base.
+        
+    Returns:
+        tiktoken.Encoding object if successful, None if failed
+        
+    Note:
+        This function centralizes encoder acquisition logic to avoid duplication
+        across the codebase. It handles errors gracefully and logs warnings.
+    """
+    try:
+        if model_name:
+            encoder = tiktoken.encoding_for_model(model_name)
+        else:
+            encoder = tiktoken.get_encoding("cl100k_base")
+        return encoder
+    except Exception as e:
+        logger.warning(f"Failed to initialize encoder: {e}")
+        return None

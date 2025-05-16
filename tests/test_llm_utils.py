@@ -8,8 +8,8 @@ import pytest
 import pytest_asyncio
 from unittest.mock import patch, MagicMock, ANY, AsyncMock
 
-from src.llm_utils import get_llm_client, ProcessingResult
-from src.llm_client import LLMClient
+from llm_utils import get_llm_client, ProcessingResult
+from llm_client import LLMClient
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def mock_encoder():
 @pytest.fixture
 def mock_llm_client():
     """Create a mock LLM client for testing."""
-    with patch('src.llm_utils.LLMClient') as mock_client:
+    with patch('llm_utils.LLMClient') as mock_client:
         mock_instance = MagicMock(spec=LLMClient)
         mock_instance.process_batch = AsyncMock(return_value=pd.DataFrame())
         mock_client.return_value = mock_instance
@@ -81,16 +81,16 @@ def test_processing_result():
     assert result.data is not new_result.data  # Should be a new instance
 
 
-@patch('src.llm_utils.LLMClient')
+@patch('llm_utils.LLMClient')
 @pytest.mark.asyncio
-async def test_get_llm_client(mock_llm_client):
+async def test_get_llm_client(mock_llm_client_patch):
     """Test LLM client retrieval."""
     client = get_llm_client()
     assert client is not None
     assert isinstance(client, MagicMock)
 
     # Verify the client was created with default parameters
-    mock_llm_client.assert_called_once()
+    mock_llm_client_patch.assert_called_once()
 
     # Test that process_batch can be called (mocked)
     # This was removed if it's no longer supported

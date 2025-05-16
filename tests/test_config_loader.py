@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 import yaml
 import tempfile
-from src.config_loader import load_config, DEFAULT_CONFIG, ensure_config_files, is_examples_file_default
+from config_loader import load_config, DEFAULT_CONFIG, ensure_config_files, is_examples_file_default
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ def test_load_config_invalid_yaml(invalid_config_file):
 
 def test_is_examples_file_default(tmp_path):
     """Test is_examples_file_default function."""
-    from src.config_loader import DEFAULT_EXAMPLES_TEXT
+    from config_loader import DEFAULT_EXAMPLES_TEXT
 
     # Create a file with default content
     default_file = tmp_path / "default.txt"

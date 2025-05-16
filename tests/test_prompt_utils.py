@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, mock_open, MagicMock
 
-from src.prompt_utils import load_system_prompt
+from prompt_utils import load_system_prompt
 
 
 @pytest.fixture
@@ -45,11 +45,11 @@ def test_load_system_prompt_with_custom_examples(mock_config,
                                                  mock_examples_content,
                                                  mock_prompt_template):
     """Test loading a system prompt with custom examples."""
-    with patch('src.prompt_utils.CONFIG_DIR', Path('/project')), \
-         patch('src.prompt_utils.is_examples_file_default', return_value=False), \
+    with patch('prompt_utils.CONFIG_DIR', Path('/project')), \
+         patch('prompt_utils.is_examples_file_default', return_value=False), \
          patch('pathlib.Path.exists', return_value=True), \
          patch('builtins.open', mock_open(read_data=mock_examples_content)), \
-         patch('src.prompt_utils.load_prompt_template', return_value=mock_prompt_template):
+         patch('prompt_utils.load_prompt_template', return_value=mock_prompt_template):
 
         prompt = load_system_prompt(mock_config)
 
@@ -64,9 +64,9 @@ def test_load_system_prompt_with_custom_examples(mock_config,
 def test_load_system_prompt_with_default_examples(
         mock_config, mock_generic_prompt_template):
     """Test loading a system prompt with default examples."""
-    with patch('src.prompt_utils.CONFIG_DIR', Path('/project')), \
-         patch('src.prompt_utils.is_examples_file_default', return_value=True), \
-         patch('src.prompt_utils.load_prompt_template', return_value=mock_generic_prompt_template):
+    with patch('prompt_utils.CONFIG_DIR', Path('/project')), \
+         patch('prompt_utils.is_examples_file_default', return_value=True), \
+         patch('prompt_utils.load_prompt_template', return_value=mock_generic_prompt_template):
 
         prompt = load_system_prompt(mock_config)
 
@@ -77,8 +77,8 @@ def test_load_system_prompt_with_default_examples(
 
 def test_load_system_prompt_missing_examples_file(mock_config):
     """Test that an error is raised when examples file is missing."""
-    with patch('src.prompt_utils.CONFIG_DIR', Path('/project')), \
-         patch('src.prompt_utils.is_examples_file_default', return_value=False), \
+    with patch('prompt_utils.CONFIG_DIR', Path('/project')), \
+         patch('prompt_utils.is_examples_file_default', return_value=False), \
          patch('pathlib.Path.exists', return_value=False):
 
         with pytest.raises(FileNotFoundError) as excinfo:
@@ -90,11 +90,11 @@ def test_load_system_prompt_missing_examples_file(mock_config):
 def test_load_system_prompt_empty_examples_file(mock_config,
                                                 mock_prompt_template):
     """Test that an error is raised when examples file is empty."""
-    with patch('src.prompt_utils.CONFIG_DIR', Path('/project')), \
-         patch('src.prompt_utils.is_examples_file_default', return_value=False), \
+    with patch('prompt_utils.CONFIG_DIR', Path('/project')), \
+         patch('prompt_utils.is_examples_file_default', return_value=False), \
          patch('pathlib.Path.exists', return_value=True), \
          patch('builtins.open', mock_open(read_data="")), \
-         patch('src.prompt_utils.load_prompt_template', return_value=mock_prompt_template):
+         patch('prompt_utils.load_prompt_template', return_value=mock_prompt_template):
 
         with pytest.raises(ValueError) as excinfo:
             load_system_prompt(mock_config)
@@ -107,11 +107,11 @@ def test_load_system_prompt_missing_placeholder(mock_config,
     """Test that an error is raised when prompt template is missing the placeholder."""
     template_without_placeholder = "A template with no placeholders"
 
-    with patch('src.prompt_utils.CONFIG_DIR', Path('/project')), \
-         patch('src.prompt_utils.is_examples_file_default', return_value=False), \
+    with patch('prompt_utils.CONFIG_DIR', Path('/project')), \
+         patch('prompt_utils.is_examples_file_default', return_value=False), \
          patch('pathlib.Path.exists', return_value=True), \
          patch('builtins.open', mock_open(read_data=mock_examples_content)), \
-         patch('src.prompt_utils.load_prompt_template', return_value=template_without_placeholder):
+         patch('prompt_utils.load_prompt_template', return_value=template_without_placeholder):
 
         with pytest.raises(ValueError) as excinfo:
             load_system_prompt(mock_config)

@@ -16,11 +16,17 @@ import shutil
 import tempfile
 import pandas as pd
 import pytest
+from unittest.mock import patch, MagicMock
+from pathlib import Path
 
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from src.input_splitter import split_file_by_token_limit
-from src.utils import deep_merge_dicts
+from input_splitter import (split_file_by_token_limit, InputSplitterError,
+                            MissingArgumentError, FileNotFoundError,
+                            UnsupportedFileTypeError, OutputDirectoryError)
+from utils import deep_merge_dicts
+from constants import DEFAULT_PRICING_CSV_PATH
+from token_tracker import _load_pricing
 
 TEST_INPUT_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), 'input'))
@@ -104,7 +110,7 @@ def test_force_chunk_count_warns_over_token(monkeypatch, cleanup_output):
         count_tokens_fn=dummy_token_counter,
         force_chunk_count=2,
         output_dir=TEST_OUTPUT_DIR,
-        logger=fake_logger())
+        logger_override=fake_logger())
     assert any('exceeds token limit' in w for w in warnings)
 
 
@@ -119,7 +125,7 @@ def test_deep_merge_dicts():
 
 
 def test_examples_file_check(tmp_path):
-    from src.config_loader import is_examples_file_default, DEFAULT_EXAMPLES_TEXT
+    from config_loader import is_examples_file_default, DEFAULT_EXAMPLES_TEXT
     p = tmp_path / 'examples.txt'
     p.write_text(DEFAULT_EXAMPLES_TEXT)
     assert is_examples_file_default(str(p))
@@ -128,15 +134,6 @@ def test_examples_file_check(tmp_path):
 
 
 def test_pricing_csv_error(monkeypatch):
-    from src.token_tracker import _load_pricing, PRICING_CSV_PATH
-    if os.path.exists(PRICING_CSV_PATH):
-        os.rename(PRICING_CSV_PATH, PRICING_CSV_PATH + '.bak')
-    try:
-        try:
-            _ = _load_pricing()
-            assert False, "Should raise FileNotFoundError"
-        except FileNotFoundError:
-            pass
-    finally:
-        if os.path.exists(PRICING_CSV_PATH + '.bak'):
-            os.rename(PRICING_CSV_PATH + '.bak', PRICING_CSV_PATH)
+    monkeypatch.setattr(Path, 'exists', lambda self: False)
+    with pytest.raises(FileNotFoundError):
+        _load_pricing(DEFAULT_PRICING_CSV_PATH)

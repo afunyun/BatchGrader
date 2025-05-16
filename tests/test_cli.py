@@ -3,13 +3,10 @@ from unittest.mock import patch, MagicMock, call
 import sys
 from pathlib import Path
 
-# It's good practice to ensure src is in the path for test discovery and execution if needed,
-# though for direct calls to cli.main with mocked sys.argv, direct imports from src.cli work.
-# If this file is run directly or by some test runners, this helps.
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# sys.path.insert(0, str(Path(__file__).parent.parent)) # Likely redundant with pytest.ini python_paths
 
-from src import cli  # Assuming cli.py is in src/
-from src.constants import PROJECT_ROOT, LOG_DIR as DEFAULT_LOG_DIR_CONST
+import cli  # Removed src. prefix
+from constants import PROJECT_ROOT, LOG_DIR as DEFAULT_LOG_DIR_CONST  # Removed src. prefix
 
 
 # Helper to set sys.argv for a test
@@ -24,9 +21,10 @@ def mock_sys_argv(monkeypatch):
 
 @pytest.fixture
 def mock_batch_runner_functions(mocker):
-    mock_run_batch = mocker.patch('src.cli.run_batch_processing')
-    mock_run_count = mocker.patch('src.cli.run_count_mode')
-    mock_run_split = mocker.patch('src.cli.run_split_mode')
+    mock_run_batch = mocker.patch(
+        'cli.run_batch_processing')  # Removed src. prefix
+    mock_run_count = mocker.patch('cli.run_count_mode')  # Removed src. prefix
+    mock_run_split = mocker.patch('cli.run_split_mode')  # Removed src. prefix
     return {
         'batch': mock_run_batch,
         'count': mock_run_count,
@@ -36,8 +34,9 @@ def mock_batch_runner_functions(mocker):
 
 @pytest.fixture
 def mock_load_config(mocker):
-    return mocker.patch('src.cli.load_config',
-                        return_value={'test_key': 'test_value'})
+    return mocker.patch(
+        'cli.load_config',  # Removed src. prefix
+        return_value={'test_key': 'test_value'})
 
 
 def test_cli_batch_mode_input_file(mock_sys_argv, mock_batch_runner_functions,
@@ -189,10 +188,11 @@ def test_cli_load_config_file_not_found(mock_sys_argv,
     input_file.write_text("id,text\n1,test")
     non_existent_config = tmp_path / "non_existent_config.yaml"
 
-    mocker.patch('src.cli.load_config',
-                 side_effect=FileNotFoundError("Config not found"))
+    mocker.patch(
+        'cli.load_config',  # Removed src. prefix
+        side_effect=FileNotFoundError("Config not found"))
     # We also need to mock logger because cli.py logs an error
-    mock_logger = mocker.patch('src.cli.logger')
+    mock_logger = mocker.patch('cli.logger')  # Removed src. prefix
 
     argv = [
         'script_name', '--input-file',

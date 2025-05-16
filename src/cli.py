@@ -1,19 +1,36 @@
 import argparse
 import sys
 from pathlib import Path
+import logging
 
 from batch_runner import run_batch_processing, run_count_mode, run_split_mode
 from config_loader import load_config
-from constants import LOG_DIR as DEFAULT_LOG_DIR, PROJECT_ROOT
-from logger import logger
+from constants import LOG_DIR as DEFAULT_LOG_DIR_CONSTANT, PROJECT_ROOT
+from logger import setup_logging
 
-# To ensure logger is configured before first use if batch_runner's top-level logger setup is removed/changed.
-# However, batch_runner.py itself might still initialize it. This is a bit tricky.
-# For now, assume logger is available.
+logger = logging.getLogger(__name__)  # Define logger at module level
 
 
 def main():
     """Main CLI entry point for BatchGrader."""
+
+    # Determine initial log_dir for setup_logging, before full arg parsing
+    # This is a bit of a workaround to get log_dir early.
+    # A more robust solution might involve a pre-parsing step for --log-dir.
+    pre_log_dir_val = None
+    if '--log-dir' in sys.argv:
+        try:
+            log_dir_index = sys.argv.index('--log-dir') + 1
+            if log_dir_index < len(sys.argv):
+                pre_log_dir_val = sys.argv[log_dir_index]
+        except ValueError:
+            pass  # --log-dir not found or no value after it
+
+    # Use the extracted log_dir or default from constants for initial setup
+    initial_log_dir = Path(
+        pre_log_dir_val) if pre_log_dir_val else DEFAULT_LOG_DIR_CONSTANT
+    setup_logging(log_dir=initial_log_dir)
+
     parser = argparse.ArgumentParser(
         description=
         "BatchGrader CLI: Batch LLM evaluation, token counting, and input splitting."
@@ -52,7 +69,7 @@ def main():
         type=str,
         default=None,
         help=
-        f"Directory for log files (default: {DEFAULT_LOG_DIR} or as set by config)."
+        f"Directory for log files (default: {DEFAULT_LOG_DIR_CONSTANT} or as set by config)."
     )
 
     # Operational mode arguments (though batch_runner currently assumes 'batch' mode mostly)
@@ -106,6 +123,13 @@ def main():
             logger.error(f"Unsupported mode: {args.mode}")
             sys.exit(1)
 
+    except KeyboardInterrupt:
+        logger.warning("Processing interrupted by user (Ctrl+C).")
+        sys.exit(130)  # Standard exit code for ^C
+    except SystemExit as e:
+        # This allows sys.exit() to work as intended without being caught as a generic Exception
+        # logger.debug(f"SystemExit called with code: {e.code}") # Optional: log if needed
+        raise  # Re-raise to allow exit
     except Exception as e:
         logger.critical(
             f"A critical error occurred during {args.mode} mode processing: {e}",

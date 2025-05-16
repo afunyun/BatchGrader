@@ -22,13 +22,21 @@ Attributes:
     input_tokens: int, total input tokens used for this chunk
     output_tokens: int, total output tokens used for this chunk
     cost: float, cost for this chunk (populated after completion)
+    total_items: int, total number of items in the chunk
+    processed_items: int, number of items processed so far
+    start_time: Optional[float], timestamp when processing started
+    estimated_completion_time: Optional[datetime.datetime], estimated completion time
 
 Methods:
     get_status_log_str(): Returns a formatted string for logging this job's current state.
+    update_progress(items_processed_increment: int): Updates the progress of the job.
+    get_progress_eta_str(): Returns a string with progress percentage and ETA.
 """
 
 from typing import Any, Dict, Optional, Union
 import os
+import time
+import datetime
 
 import pandas as pd
 
@@ -69,6 +77,49 @@ class BatchJob:
         self.input_tokens: int = 0
         self.output_tokens: int = 0
         self.cost: float = 0.0
+
+        # Progress tracking attributes
+        self.total_items: int = len(chunk_df) if chunk_df is not None else 0
+        self.processed_items: int = 0
+        self.start_time: Optional[float] = None
+        self.estimated_completion_time: Optional[datetime.datetime] = None
+
+    def update_progress(self, items_processed_increment: int):
+        """Updates the progress of the job."""
+        if self.start_time is None:
+            self.start_time = time.monotonic()
+
+        self.processed_items += items_processed_increment
+        self.processed_items = min(self.processed_items,
+                                   self.total_items)  # Cap at total_items
+
+        if self.processed_items > 0 and self.total_items > 0 and self.start_time is not None:
+            elapsed_time = time.monotonic() - self.start_time
+            time_per_item = elapsed_time / self.processed_items
+            remaining_items = self.total_items - self.processed_items
+            remaining_time_seconds = remaining_items * time_per_item
+            self.estimated_completion_time = datetime.datetime.now(
+            ) + datetime.timedelta(seconds=remaining_time_seconds)
+        elif self.processed_items == self.total_items:  # Job completed
+            self.estimated_completion_time = datetime.datetime.now()
+
+    def get_progress_eta_str(self) -> str:
+        """Returns a string with progress percentage and ETA."""
+        if self.total_items == 0:
+            return "N/A (no items)"
+
+        progress_percent = (self.processed_items / self.total_items) * 100
+
+        eta_str = "Calculating..."
+        if self.status == "completed":
+            eta_str = "Completed"
+        elif self.estimated_completion_time:
+            eta_str = self.estimated_completion_time.strftime(
+                "%Y-%m-%d %H:%M:%S")
+        elif self.status == "running" and self.processed_items == 0:
+            eta_str = "Started, calculating ETA..."
+
+        return f"{progress_percent:.2f}% (ETA: {eta_str})"
 
     def get_status_log_str(self) -> str:
         """Returns a formatted string for logging this job's current state."""

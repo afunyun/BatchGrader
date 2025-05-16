@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock, call
 from rich.console import Console
 from rich.table import Table
 
-from src.rich_display import RichJobTable, print_summary_table
+from rich_display import RichJobTable, print_summary_table
 
 
 class MockBatchJob:

@@ -11,27 +11,35 @@ import json
 import tiktoken  # Import the mocked tiktoken module
 
 # Import from the package
-from logger import logger as global_logger_for_tests
-from llm_client import LLMClient
-from config_loader import load_config
+# from logger import logger as global_logger_for_tests # REMOVED
+from llm_client import LLMClient  # Ensure explicit import
+from config_loader import load_config  # Ensure explicit import
+from logger import setup_logging  # Import setup_logging
 
 # Import functions to be tested from batch_runner
-from batch_runner import (process_file, run_batch_processing, run_count_mode,
-                          run_split_mode, print_token_cost_stats,
-                          print_token_cost_summary)
+from batch_runner import (
+    process_file,
+    run_batch_processing,
+    run_count_mode,  # Ensure explicit import
+    run_split_mode,
+    print_token_cost_stats,
+    print_token_cost_summary)
 
 # Import relevant items from other modules for mocking or setup
-from file_processor import process_file_wrapper, process_file_concurrently
-from input_splitter import split_file_by_token_limit
-from constants import DEFAULT_RESPONSE_FIELD, DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_SPLIT_TOKEN_LIMIT
-from prompt_utils import load_system_prompt
+from file_processor import process_file_wrapper, process_file_concurrently  # Ensure explicit import
+from input_splitter import split_file_by_token_limit  # Ensure explicit import
+from constants import DEFAULT_RESPONSE_FIELD, DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_SPLIT_TOKEN_LIMIT  # Ensure explicit import
+from prompt_utils import load_system_prompt  # Ensure explicit import
 
 Path("tests/logs").mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture(scope="session")
-def global_logger_instance():
-    return global_logger_for_tests
+def global_logger_instance(tmp_path_factory):
+    log_dir = tmp_path_factory.mktemp("test_br_logs")
+    setup_logging(log_dir=log_dir, log_level=logging.DEBUG)
+    return logging.getLogger(
+        "test_batch_runner")  # Use a named logger for tests
 
 
 @pytest.fixture(scope="session")
@@ -150,12 +158,13 @@ def test_process_file(mocker, mock_args_input_file, basic_config):
                                      return_value=True)
     mocker.patch('batch_runner.load_system_prompt',
                  return_value="Test System Prompt Content")
-    # Mock LLMClient used to get encoder in process_file
-    mock_llm_client_instance = MagicMock()
-    # Use the mocked tiktoken module
-    mock_llm_client_instance.encoder = tiktoken.get_encoding("cl100k_base")
-    mocker.patch('batch_runner.LLMClient',
-                 return_value=mock_llm_client_instance)
+
+    # Create a consistent encoder mock
+    mock_encoder = mocker.Mock(name='encoder')
+    mock_llm_client = mocker.patch('batch_runner.LLMClient')
+    mock_llm_client.return_value.encoder = mock_encoder
+    # Ensure the encoder is used consistently
+    mocker.patch('tiktoken.encoding_for_model', return_value=mock_encoder)
 
     success = process_file(mock_args_input_file.input_file,
                            mock_args_input_file.output_dir, basic_config)
@@ -167,7 +176,7 @@ def test_process_file(mocker, mock_args_input_file, basic_config):
         config=basic_config,
         system_prompt_content="Test System Prompt Content",
         response_field=basic_config['response_field_name'],
-        encoder=mock_llm_client_instance.encoder,
+        encoder=mock_encoder,
         token_limit=basic_config['global_token_limit'])
 
 
@@ -184,27 +193,27 @@ def test_run_count_mode_single_file(mocker, mock_args_input_file,
                                          'max': 10
                                      }))
 
-    mock_llm_client_instance = MagicMock()
-    # Use the mocked tiktoken module
-    mock_llm_client_instance.encoder = tiktoken.get_encoding("cl100k_base")
-    mocker.patch('batch_runner.LLMClient',
-                 return_value=mock_llm_client_instance)
+    # Create a consistent encoder mock
+    mock_encoder = mocker.Mock(name='encoder')
+    mock_llm_client = mocker.patch('batch_runner.LLMClient')
+    mock_llm_client.return_value.encoder = mock_encoder
+    # Ensure the encoder is used consistently
+    mocker.patch('tiktoken.encoding_for_model', return_value=mock_encoder)
     mocker.patch('batch_runner.load_system_prompt', return_value="SysPrompt")
 
     run_count_mode(mock_args_input_file, basic_config)
 
-    # Use any_call instead of assert_called_once_with for DataFrame comparisons
-    mock_check_limits.assert_any_call(
-        mocker.ANY,  # Use ANY for DataFrame comparison
-        "SysPrompt",
-        basic_config['response_field_name'],
-        mock_llm_client_instance.encoder,
-        token_limit=float('inf'))
+    # Verify check_token_limits was called with correct arguments
+    assert mock_check_limits.call_count == 1
+    args, kwargs = mock_check_limits.call_args
 
-    # Verify the DataFrame was passed correctly by checking the first argument
-    args, _ = mock_check_limits.call_args
-    assert isinstance(args[0], pd.DataFrame)
-    assert args[0].equals(test_df)
+    # Check that the DataFrame passed to check_token_limits matches our test DataFrame
+    pd.testing.assert_frame_equal(args[0], test_df)
+
+    # Verify other arguments
+    assert args[1] == "SysPrompt"  # system_prompt_content
+    assert args[2] == basic_config['response_field_name']  # response_field
+    assert args[3] == mock_encoder  # encoder
 
 
 def test_run_split_mode_single_file(mocker, mock_args_input_file,

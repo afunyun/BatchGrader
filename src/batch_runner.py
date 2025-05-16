@@ -1,24 +1,25 @@
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+import datetime
+import logging
 
 import pandas as pd
 
 from config_loader import load_config
-from constants import (
-    DEFAULT_GLOBAL_TOKEN_LIMIT,
-    DEFAULT_MODEL,
-    DEFAULT_RESPONSE_FIELD,
-    DEFAULT_SPLIT_TOKEN_LIMIT,
-    MAX_BATCH_SIZE,
-)
+from constants import (DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_MODEL,
+                       DEFAULT_RESPONSE_FIELD, DEFAULT_SPLIT_TOKEN_LIMIT,
+                       MAX_BATCH_SIZE, DEFAULT_EVENT_LOG_PATH,
+                       DEFAULT_TOKEN_USAGE_LOG_PATH)
 from data_loader import load_data, save_data
 from file_processor import check_token_limits, prepare_output_path, process_file_wrapper
 from input_splitter import split_file_by_token_limit
 from llm_client import LLMClient
-from logger import logger
 from log_utils import prune_logs_if_needed
 from prompt_utils import load_system_prompt
 from token_tracker import get_token_usage_for_day, get_token_usage_summary, log_token_usage_event, update_token_log
+from utils import get_encoder
+
+logger = logging.getLogger(__name__)
 
 
 def get_log_dirs(args) -> Tuple[Path, Path]:
@@ -60,31 +61,24 @@ def process_file(filepath_str: str, output_dir_str: str,
         response_field = config.get('response_field_name',
                                     DEFAULT_RESPONSE_FIELD)
 
-        # Get encoder (tiktoken)
-        # This might be better suited inside file_processor or llm_client if always the same
-        encoder = None
-        try:
-            # Pass config to LLMClient instead of having it load config itself
-            llm_client_for_encoder = LLMClient(config=config)
-            encoder = llm_client_for_encoder.encoder
-            if encoder is None:
-                raise ValueError("LLMClient did not provide an encoder.")
-        except Exception as e:
+        # Get encoder using centralized utility
+        model_name = config.get('openai_model_name', DEFAULT_MODEL)
+        encoder = get_encoder(model_name)
+        if encoder is None:
             logger.error(
-                f"Failed to get encoder: {e}. Token counting and splitting might be affected."
+                f"Failed to get encoder for model {model_name}. Token counting and splitting might be affected."
             )
-            # Decide if we should proceed without an encoder or raise an error / return False
-            # For now, we'll let process_file_wrapper handle it, it might have fallbacks or raise.
 
         # Use global token limit from constants, overridden by config if present
         token_limit = config.get('global_token_limit',
                                  DEFAULT_GLOBAL_TOKEN_LIMIT)
+        logger.debug(
+            f"Processing configuration: model={model_name}, token_limit={token_limit}, response_field={response_field}"
+        )
 
         # Delegate to the centralized file processing wrapper
         success = process_file_wrapper(
-            filepath=str(
-                filepath
-            ),  # process_file_wrapper might still expect string paths
+            filepath=str(filepath),
             output_dir=str(output_dir),
             config=config,
             system_prompt_content=system_prompt_content,
@@ -96,21 +90,38 @@ def process_file(filepath_str: str, output_dir_str: str,
             logger.success(f"Successfully processed {filepath.name}.")
         else:
             logger.error(
-                f"Failed to process {filepath.name}. See logs for details.")
+                f"Failed to process {filepath.name}. See logs for details. Config state: model={model_name}, token_limit={token_limit}, response_field={response_field}"
+            )
         return success
 
     except FileNotFoundError:
-        logger.error(f"[ERROR] Input file not found: {filepath}")
+        logger.error(
+            f"[ERROR] Input file not found: {filepath}. Please verify the file exists and you have read permissions."
+        )
         return False
     except ValueError as ve:
         logger.error(
-            f"[ERROR] Configuration or input error for {filepath.name}: {ve}")
+            f"[ERROR] Configuration or input error for {filepath.name}: {ve}. Current config: {config}"
+        )
         return False
     except Exception as e:
         logger.error(
             f"[CRITICAL ERROR] Unexpected error processing {filepath.name}: {e}",
-            exc_info=True)
-        # Log to a specific error file for this run might be good if not already handled by process_file_wrapper
+            exc_info=True,
+            extra={
+                "file_info": {
+                    "name":
+                    filepath.name,
+                    "size":
+                    filepath.stat().st_size if filepath.exists() else None,
+                    "last_modified":
+                    datetime.datetime.fromtimestamp(
+                        filepath.stat().st_mtime).isoformat()
+                    if filepath.exists() else None
+                },
+                "config": config,
+                "error_type": type(e).__name__
+            })
         return False
 
 
@@ -120,13 +131,23 @@ def print_token_cost_stats(config=None):
         # Pass config to LLMClient instead of having it load config itself
         llm_client = LLMClient(config=config)
         api_key = llm_client.api_key
-        daily_usage = get_token_usage_for_day(api_key)
+        daily_usage = get_token_usage_for_day(
+            api_key, log_path=DEFAULT_TOKEN_USAGE_LOG_PATH)
         if daily_usage:
             logger.info("Token Usage Stats (Today):")
-            logger.info(f"  Total Tokens: {daily_usage['total_tokens']}")
-            logger.info(
-                f"  Estimated Cost: ${daily_usage['estimated_cost']:.4f}")
-            # Add more details if available in daily_usage
+            # Ensure daily_usage is treated as an int if it's just the token count
+            if isinstance(daily_usage, int):
+                logger.info(f"  Total Tokens: {daily_usage}")
+            elif isinstance(daily_usage, dict):
+                logger.info(
+                    f"  Total Tokens: {daily_usage.get('total_tokens', daily_usage.get('tokens_submitted', 'N/A'))}"
+                )
+                if 'estimated_cost' in daily_usage:
+                    logger.info(
+                        f"  Estimated Cost: ${daily_usage['estimated_cost']:.4f}"
+                    )
+            else:
+                logger.info(f"  Usage data: {daily_usage}")
         else:
             logger.info(
                 "No token usage recorded for today or failed to retrieve stats."
@@ -155,8 +176,7 @@ def print_token_cost_summary(summary_file_path: Optional[str] = None,
 
         if actual_summary_path.exists():
             summary = get_token_usage_summary(
-                str(actual_summary_path
-                    ))  # get_token_usage_summary might expect str
+                event_log_path=actual_summary_path)
             if summary:
                 logger.info("Overall Token Usage Summary (from file):")
                 logger.info(
@@ -195,7 +215,7 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
         input_directory = Path(args.input_dir)
         if not input_directory.is_dir():
             logger.error(
-                f"[ERROR] Input directory not found or not a directory: {input_directory}"
+                f"[ERROR] Input directory not found or not a directory: {input_directory}. Please verify the path and permissions."
             )
             return
         files_to_process_str = [
@@ -204,28 +224,37 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
         ]
         if not files_to_process_str:
             logger.warning(
-                f"No suitable files (csv, xlsx, jsonl) found in directory: {input_directory}"
+                f"No suitable files (csv, xlsx, jsonl) found in directory: {input_directory}. Supported formats: .csv, .xlsx, .jsonl"
             )
             return
     else:
         logger.error(
-            "[ERROR] No input file or directory specified. Use --input-file or --input-dir."
+            "[ERROR] No input file or directory specified. Use --input-file or --input-dir to specify the input source."
         )
         return
 
     output_directory_str = args.output_dir if args.output_dir else str(
         Path.cwd() / "output" / "batch_results")  # Default output
     output_directory = Path(output_directory_str)
-    output_directory.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Output directory set to: {output_directory}")
+    try:
+        output_directory.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Output directory set to: {output_directory}")
+    except Exception as e:
+        logger.error(
+            f"[ERROR] Failed to create output directory {output_directory}: {e}. Please verify permissions and path."
+        )
+        return
 
     overall_success = True
     processed_files_count = 0
     failed_files_count = 0
+    start_time = datetime.datetime.now()
 
     for filepath_str in files_to_process_str:
         filepath = Path(filepath_str)
-        logger.info(f"\n--- Starting processing for: {filepath.name} ---")
+        logger.info(
+            f"\n--- Starting processing for: {filepath.name} (Size: {filepath.stat().st_size:,} bytes) ---"
+        )
         try:
             success = process_file(str(filepath), str(output_directory),
                                    config)
@@ -234,15 +263,54 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
             else:
                 failed_files_count += 1
                 overall_success = False  # If any file fails, overall is not a complete success
+        except (IOError, OSError) as e:
+            logger.error(
+                f"File system error processing {filepath.name}: {str(e)}",
+                exc_info=True,
+                extra={
+                    "file_info": {
+                        "name":
+                        filepath.name,
+                        "size":
+                        filepath.stat().st_size if filepath.exists() else None,
+                        "last_modified":
+                        datetime.datetime.fromtimestamp(
+                            filepath.stat().st_mtime).isoformat()
+                        if filepath.exists() else None
+                    },
+                    "error_type": type(e).__name__,
+                    "config": config
+                })
+            failed_files_count += 1
+            overall_success = False
         except Exception as e:
             logger.error(
                 f"Unhandled exception processing {filepath.name}: {str(e)}",
-                exc_info=True)
+                exc_info=True,
+                extra={
+                    "file_info": {
+                        "name":
+                        filepath.name,
+                        "size":
+                        filepath.stat().st_size,
+                        "last_modified":
+                        datetime.datetime.fromtimestamp(
+                            filepath.stat().st_mtime).isoformat()
+                    },
+                    "error_type": type(e).__name__,
+                    "config": config
+                })
             failed_files_count += 1
             overall_success = False
         logger.info(f"--- Finished processing for: {filepath.name} ---")
 
+    end_time = datetime.datetime.now()
+    duration = (end_time - start_time).total_seconds()
+
     logger.info("\nBatch processing finished.")
+    logger.info(
+        f"Processing duration: {duration:.2f} seconds ({duration/60:.2f} minutes)"
+    )
     logger.info(f"Successfully processed files: {processed_files_count}")
     logger.info(f"Failed files: {failed_files_count}")
 
@@ -251,7 +319,9 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
         print_token_cost_summary(log_dir=log_dir, config=config)
 
     if not overall_success and failed_files_count > 0:
-        logger.warning("Some files failed to process. Please check the logs.")
+        logger.warning(
+            f"Some files failed to process ({failed_files_count} out of {len(files_to_process_str)}). Please check the logs for details."
+        )
 
 
 def run_count_mode(args: Any, config: Dict[str, Any]):
@@ -288,17 +358,11 @@ def run_count_mode(args: Any, config: Dict[str, Any]):
     system_prompt_content = load_system_prompt(config)
     response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD)
 
-    # Get encoder for token counting
-    encoder = None
-    try:
-        llm_client_for_encoder = LLMClient(config=config)
-        encoder = llm_client_for_encoder.encoder
-        if encoder is None:
-            raise ValueError(
-                "LLMClient did not provide an encoder for token counting.")
-    except Exception as e:
-        logger.error(
-            f"Failed to get encoder: {e}. Cannot perform token counting.")
+    # Get encoder using centralized utility
+    model_name = config.get('openai_model_name', DEFAULT_MODEL)
+    encoder = get_encoder(model_name)
+    if encoder is None:
+        logger.error("Failed to get encoder. Cannot perform token counting.")
         return
 
     total_files_counted = 0
@@ -381,17 +445,11 @@ def run_split_mode(args: Any, config: Dict[str, Any]):
     system_prompt_content = load_system_prompt(config)
     response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD)
 
-    # Get encoder (tiktoken)
-    encoder = None
-    try:
-        llm_client_for_encoder = LLMClient()
-        encoder = llm_client_for_encoder.encoder
-        if encoder is None:
-            raise ValueError(
-                "LLMClient did not provide an encoder for splitting.")
-    except Exception as e:
-        logger.error(
-            f"Failed to get encoder: {e}. Cannot perform file splitting.")
+    # Get encoder using centralized utility
+    model_name = config.get('openai_model_name', DEFAULT_MODEL)
+    encoder = get_encoder(model_name)
+    if encoder is None:
+        logger.error("Failed to get encoder. Cannot perform file splitting.")
         return
 
     # Splitting parameters from config or constants

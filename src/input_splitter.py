@@ -25,16 +25,16 @@ Added force_chunk_count parameter to allow for fixed chunking.
 Respected token_limit/row_limit as before.
 """
 import os
+import builtins
 from pathlib import Path
+from typing import Callable, Dict, List, Tuple, Union, Optional
 
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple, Union
-from config_loader import load_config
 
-# Initialize module logger
-logger = logging.getLogger('BatchGrader')
+# Define module-level logger BEFORE it's used in default args or function bodies
+logger = logging.getLogger(__name__)
 
 
 class InputSplitterError(Exception):
@@ -47,7 +47,7 @@ class MissingArgumentError(InputSplitterError):
     pass
 
 
-class FileNotFoundError(InputSplitterError):
+class FileNotFoundError(builtins.FileNotFoundError, InputSplitterError):
     """Exception raised when input file is not found"""
     pass
 
@@ -62,22 +62,36 @@ class OutputDirectoryError(InputSplitterError):
     pass
 
 
-def split_file_by_token_limit(input_path,
-                              token_limit=None,
-                              count_tokens_fn=None,
-                              response_field=None,
-                              row_limit=None,
-                              output_dir=None,
-                              file_prefix=None,
-                              force_chunk_count=None,
-                              logger=None,
-                              df=None,
-                              _original_ext=None):
+def split_file_by_token_limit(
+        input_path: Optional[str],
+        token_limit: Optional[int] = None,
+        count_tokens_fn: Optional[Callable[[pd.Series], int]] = None,
+        response_field: Optional[str] = None,
+        row_limit: Optional[int] = None,
+        output_dir: Optional[str] = None,
+        file_prefix: Optional[str] = None,
+        force_chunk_count: Optional[int] = None,
+        logger_override: Optional[logging.Logger] = None,
+        df: Optional[pd.DataFrame] = None,
+        _original_ext: Optional[str] = None) -> Tuple[List[str], List[int]]:
     """
     Splits input file or DataFrame into chunks based on force_chunk_count (if set), otherwise token_limit/row_limit.
     - If force_chunk_count > 1: splits into N row-based chunks, then checks token count per chunk and warns/errors if any chunk exceeds token_limit.
     - Otherwise, splits by token_limit or row_limit as before.
     If df is provided, it is used as the input data; otherwise, input_path is loaded.
+    
+    Args:
+        input_path: Path to the input file to split
+        token_limit: Maximum number of tokens per chunk
+        count_tokens_fn: Function to count tokens in a row
+        response_field: Name of the response field in the data
+        row_limit: Maximum number of rows per chunk
+        output_dir: Directory to save split files
+        file_prefix: Prefix for output file names
+        force_chunk_count: If > 1, forcibly split into this many chunks
+        logger_override: Logger instance to use for this function call
+        df: Optional DataFrame to use instead of loading from file
+        _original_ext: Original file extension (internal use for recursive calls)
     
     Returns:
         Tuple of (output_files, token_counts) where output_files is a list of file paths and token_counts is a list of token counts.
@@ -87,21 +101,37 @@ def split_file_by_token_limit(input_path,
         FileNotFoundError: When input file is not found
         UnsupportedFileTypeError: When file type is not supported
         OutputDirectoryError: When output directory cannot be determined
-        ValueError: When neither token_limit nor row_limit is provided
+        ValueError: When neither token_limit nor row_limit is provided, or when token_limit is set but count_tokens_fn is missing
     """
-    # If no logger is passed, use the module logger
-    if not logger:
-        logger = globals()['logger']
+    current_logger = logger_override if logger_override else logger  # Use module-level logger if override is None
 
-    logger.debug(
+    current_logger.debug(
         f"Splitting file: {input_path if input_path else 'DataFrame input'}, Token Limit: {token_limit}, Row Limit: {row_limit}, Force Chunks: {force_chunk_count}"
     )
 
-    # Validate that at least one of token_limit or row_limit is set
+    # Validate that at least one of token_limit, row_limit, or force_chunk_count is set
     if token_limit is None and row_limit is None and force_chunk_count is None:
         raise ValueError(
             "At least one of token_limit, row_limit, or force_chunk_count must be provided"
         )
+
+    # Validate that if token_limit is set, count_tokens_fn is provided
+    if token_limit is not None and count_tokens_fn is None:
+        raise ValueError(
+            "count_tokens_fn must be provided when using token_limit")
+
+    # Validate that if force_chunk_count is set, it's a positive integer
+    if force_chunk_count is not None:
+        if not isinstance(force_chunk_count, int) or force_chunk_count < 1:
+            raise ValueError(
+                f"force_chunk_count must be a positive integer, got {force_chunk_count}"
+            )
+
+    # Validate that if row_limit is set, it's a positive integer
+    if row_limit is not None:
+        if not isinstance(row_limit, int) or row_limit < 1:
+            raise ValueError(
+                f"row_limit must be a positive integer, got {row_limit}")
 
     current_ext = None
     current_base_name = None
@@ -115,9 +145,9 @@ def split_file_by_token_limit(input_path,
             )
         current_base_name = file_prefix
     elif input_path:
-        current_ext = os.path.splitext(input_path)[1].lower()
-        current_base_name = file_prefix or os.path.splitext(
-            os.path.basename(input_path))[0]
+        p_input_path = Path(input_path)
+        current_ext = p_input_path.suffix.lower()
+        current_base_name = file_prefix or p_input_path.stem
     else:
         if df is None:
             raise MissingArgumentError(
@@ -131,7 +161,8 @@ def split_file_by_token_limit(input_path,
     if df is not None:
         loaded_df = df
     else:
-        if not input_path or not os.path.exists(input_path):
+        p_input_path = Path(input_path)
+        if not p_input_path.exists():
             raise FileNotFoundError(f"Input file not found: {input_path}")
 
         if current_ext == '.csv':
@@ -145,24 +176,27 @@ def split_file_by_token_limit(input_path,
                 f"Unsupported file type: {current_ext} for file {input_path}")
 
     if loaded_df.empty:
-        logger.warning(
+        current_logger.warning(
             f"Input data is empty for {'DataFrame processing' if input_path is None else input_path}."
         )
         return [], []
 
     if output_dir is None:
         if input_path:
-            base_input_dir = os.path.dirname(input_path)
-            output_dir = os.path.join(base_input_dir, '_chunked')
+            p_input_path = Path(input_path)
+            base_input_dir = p_input_path.parent
+            p_output_dir = base_input_dir / '_chunked'
         else:
             raise OutputDirectoryError(
                 "output_dir is None and cannot be defaulted as input_path was not provided."
             )
+    else:
+        p_output_dir = Path(output_dir)
 
-    os.makedirs(output_dir, exist_ok=True)
-    keep_path = os.path.join(output_dir, '.keep')
-    if not os.path.exists(keep_path):
-        with open(keep_path, 'w', encoding='utf-8') as f:
+    p_output_dir.mkdir(parents=True, exist_ok=True)
+    keep_file_path = p_output_dir / '.keep'
+    if not keep_file_path.exists():
+        with open(keep_file_path, 'w', encoding='utf-8') as f:
             f.write('')
 
     current_base_name = os.path.basename(current_base_name)
@@ -171,7 +205,8 @@ def split_file_by_token_limit(input_path,
     token_counts = []
 
     if force_chunk_count is not None and force_chunk_count > 1:
-        logger.info(f"Chunking mode: force_chunk_count={force_chunk_count}")
+        current_logger.info(
+            f"Chunking mode: force_chunk_count={force_chunk_count}")
         n_rows = len(loaded_df)
         chunk_sizes = [n_rows // force_chunk_count] * force_chunk_count
         for i in range(n_rows % force_chunk_count):
@@ -185,7 +220,7 @@ def split_file_by_token_limit(input_path,
             chunk_tokens = chunk.apply(count_tokens_fn,
                                        axis=1).sum() if count_tokens_fn else 0
             if token_limit is not None and chunk_tokens > token_limit:
-                logger.warning(
+                current_logger.warning(
                     f"Chunk {part_num} ({len(chunk)} rows) for '{current_base_name}' exceeds token limit ({chunk_tokens} > {token_limit}), recursively splitting."
                 )
 
@@ -200,27 +235,25 @@ def split_file_by_token_limit(input_path,
                     output_dir=output_dir,
                     file_prefix=recursive_file_prefix,
                     force_chunk_count=None,
-                    logger=logger,
+                    logger_override=current_logger,
                     df=chunk if not chunk.empty else None,
                     _original_ext=current_ext) if not chunk.empty else ([], [])
                 temp_output_files.extend(chunk_out_files)
                 temp_token_counts.extend(chunk_token_counts)
             else:
-                out_path = os.path.join(
-                    output_dir,
-                    f"{current_base_name}_part{part_num}{current_ext}")
+                out_path_p = p_output_dir / f"{current_base_name}_part{part_num}{current_ext}"
                 if current_ext == '.csv':
-                    chunk.to_csv(out_path, index=False)
+                    chunk.to_csv(str(out_path_p), index=False)
                 else:
-                    chunk.to_json(out_path,
+                    chunk.to_json(str(out_path_p),
                                   orient='records',
                                   lines=(current_ext == '.jsonl'))
-                temp_output_files.append(out_path)
+                temp_output_files.append(str(out_path_p))
                 temp_token_counts.append(chunk_tokens)
         output_files = temp_output_files
         token_counts = temp_token_counts
         log_input_ref = input_path if input_path else "DataFrame"
-        logger.info(
+        current_logger.info(
             f"File split: {log_input_ref} into {len(output_files)} chunks with token counts {token_counts}"
         )
         return output_files, token_counts
@@ -229,39 +262,42 @@ def split_file_by_token_limit(input_path,
     current_rows = []
     part_num = 1
 
-    for idx, row in loaded_df.iterrows():
+    for row_tuple in loaded_df.itertuples(index=False):
+        # Convert namedtuple to Series for compatibility with existing code
+        row = pd.Series(row_tuple, index=loaded_df.columns)
         row_tokens = count_tokens_fn(row) if count_tokens_fn else 0
+
         if current_rows and (
             (token_limit is not None
              and current_tokens + row_tokens > token_limit) or
             (row_limit is not None and len(current_rows) >= row_limit)):
-            out_path = os.path.join(
-                output_dir, f"{current_base_name}_part{part_num}{current_ext}")
+            out_path_p = p_output_dir / f"{current_base_name}_part{part_num}{current_ext}"
             if current_ext == '.csv':
-                pd.DataFrame(current_rows).to_csv(out_path, index=False)
+                pd.DataFrame(current_rows).to_csv(str(out_path_p), index=False)
             else:
                 pd.DataFrame(current_rows).to_json(
-                    out_path,
+                    str(out_path_p),
                     orient='records',
                     lines=(current_ext == '.jsonl'))
-            output_files.append(out_path)
+            output_files.append(str(out_path_p))
             token_counts.append(current_tokens)
             part_num += 1
             current_rows = []
             current_tokens = 0
         current_rows.append(row)
         current_tokens += row_tokens
+
     if current_rows:
-        out_path = os.path.join(
-            output_dir, f"{current_base_name}_part{part_num}{current_ext}")
+        out_path_p = p_output_dir / f"{current_base_name}_part{part_num}{current_ext}"
         if current_ext == '.csv':
-            pd.DataFrame(current_rows).to_csv(out_path, index=False)
+            pd.DataFrame(current_rows).to_csv(str(out_path_p), index=False)
         else:
-            pd.DataFrame(current_rows).to_json(out_path,
+            pd.DataFrame(current_rows).to_json(str(out_path_p),
                                                orient='records',
                                                lines=(current_ext == '.jsonl'))
-        output_files.append(out_path)
+        output_files.append(str(out_path_p))
         token_counts.append(current_tokens)
+
     log_input_ref = input_path if input_path else "DataFrame"
     split_mode = 'token_limit' if token_limit is not None else 'row_limit'
     limit_val = token_limit if token_limit is not None else row_limit

@@ -1,26 +1,23 @@
 from unittest.mock import MagicMock, patch
-
+import logging
 import pytest
 
 from llm_client import LLMClient
-from logger import logger
 
 
 @pytest.fixture
-def llm_client_instance():
+def llm_client_instance(tmp_path_factory):
     """
     Provides an LLMClient instance with a mocked OpenAI client.
     """
-    with patch('openai.OpenAI') as mock_openai_class:
+    with patch('llm_client.OpenAI') as mock_openai_class:
         mock_openai_instance = MagicMock()
         mock_openai_class.return_value = mock_openai_instance
 
         test_api_key = "fake_test_key"
         test_model = "gpt-3.5-turbo"
 
-        client = LLMClient(api_key=test_api_key,
-                           model=test_model,
-                           logger=logger)
+        client = LLMClient(api_key=test_api_key, model=test_model)
         yield client
 
 
@@ -94,3 +91,51 @@ def test_llm_parse_batch_output_file_critical_failure(llm_client_instance):
 
         client_under_test.client.files.content.assert_called_once_with(
             "fake_output_file_id_fail")
+
+
+@pytest.fixture
+def mock_client():
+    return LLMClient(api_key="test_key")
+
+
+def test_llm_client_initialization(llm_client_instance) -> None:
+    """Test LLMClient initialization without referencing base_url.\n\n    Args:\n        llm_client_instance: Fixture providing an LLMClient instance.\n\n    Returns:\n        None\n    """
+    assert llm_client_instance.api_key == 'fake_test_key'  # Only assert existing attributes
+    assert llm_client_instance.model == 'gpt-3.5-turbo'
+
+def test_llm_client_init(mocker) -> None:
+    """Test LLMClient initialization with correct behaviors.
+    
+    Args:
+        mocker: Pytest mocker fixture for mocking dependencies.
+    
+    Returns:
+        None
+    """
+
+    # Mock get_config_value to return appropriate values based on the key
+    def mock_config_getter(config, key, default=None):
+        if key == 'max_tokens_per_response':
+            return 1000  # Return an integer for max_tokens_per_response
+        if key == 'poll_interval_seconds':
+            return 60  # Return an integer for poll_interval_seconds
+        if key == 'openai_api_key' and not config:
+            return "config_api_key"
+        return default
+
+    mock_get_config = mocker.patch('llm_client.get_config_value')
+    mock_get_config.side_effect = mock_config_getter
+
+    # Mock OpenAI and encoder
+    mocker.patch('llm_client.OpenAI')
+    mocker.patch('llm_client.get_encoder')
+
+    # Test explicit initialization
+    client = LLMClient(api_key="valid_key", model="gpt-3.5-turbo")
+    assert client.api_key == "valid_key"
+    assert client.model == "gpt-3.5-turbo"
+
+    # Test with empty API key falling back to config
+    empty_key_client = LLMClient(api_key="", model="gpt-3.5-turbo")
+    # Should fall back to config value
+    assert empty_key_client.api_key == "config_api_key"

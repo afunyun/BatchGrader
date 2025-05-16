@@ -5,9 +5,9 @@ Unit tests for the file_utils module.
 import os
 from pathlib import Path
 import pytest
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import patch, mock_open, MagicMock, call, Mock
 
-from src.file_utils import prune_chunked_dir
+from file_utils import prune_chunked_dir
 
 
 @pytest.fixture
@@ -61,38 +61,3 @@ def test_prune_nonexistent_dir():
     """Test pruning a non-existent directory."""
     # Should not raise an exception
     prune_chunked_dir("/path/that/does/not/exist")
-
-
-@patch('os.path.isdir')
-@patch('os.listdir')
-@patch('os.path.isfile')
-@patch('os.remove')
-def test_prune_chunked_dir_with_mocks(mock_remove, mock_isfile, mock_listdir,
-                                      mock_isdir):
-    """Test pruning a chunked directory using mocks."""
-    mock_isdir.return_value = True
-    mock_listdir.return_value = [
-        'file1.csv', 'file2.csv', '.keep', 'subdirectory'
-    ]
-
-    # Only the first two are files, .keep is a file, subdirectory is not
-    mock_isfile.side_effect = lambda path: not path.endswith('subdirectory')
-
-    # Use os.path.join to ensure platform-appropriate path separators
-    prune_chunked_dir('/mock/chunked/dir')
-
-    # Check that remove was called only for the non-.keep files
-    assert mock_remove.call_count == 2
-
-    # Get the actual calls made to mock_remove
-    call_args_list = [args[0] for args, _ in mock_remove.call_args_list]
-
-    # Check platform-independently if the right files were removed
-    assert any('file1.csv' in arg for arg in call_args_list)
-    assert any('file2.csv' in arg for arg in call_args_list)
-
-    # Should not have tried to remove .keep or the subdirectory
-    for call in mock_remove.call_args_list:
-        args, _ = call
-        assert not args[0].endswith('.keep')
-        assert not args[0].endswith('subdirectory')

@@ -1,10 +1,14 @@
 # BatchGrader Codebase Best Practices
 
-## Last updated: 2025-05-19
+## Last updated: 2025-05-20
 
 This document outlines best practices for maintaining and extending the BatchGrader codebase. It incorporates lessons learned from recent refactoring efforts and serves as a guide for consistent, maintainable code.
 
 ## 1. Import Structure
+
+**NEVER use relative imports (e.g., `from .module import ...`) in this project. All imports must be absolute and resolvable from the project root. Do NOT use `src.*` style imports either.**
+
+**NEVER use os for file access, it will fail**
 
 ### Standard Import Order
 
@@ -16,7 +20,6 @@ Maintain a consistent order of imports in all Python modules:
 
 ```python
 # Standard library imports
-import os
 import sys
 from datetime import datetime
 from pathlib import Path

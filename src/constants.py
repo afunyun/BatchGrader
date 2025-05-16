@@ -25,3 +25,20 @@ DEFAULT_SPLIT_TOKEN_LIMIT: int = 500_000
 
 # Response field default (if not in config)
 DEFAULT_RESPONSE_FIELD: str = "llm_response"
+
+# Token Tracker Paths
+DEFAULT_TOKEN_USAGE_LOG_PATH: Path = PROJECT_ROOT / 'output' / 'token_usage_log.json'
+DEFAULT_EVENT_LOG_PATH: Path = PROJECT_ROOT / 'output' / 'token_usage_events.jsonl'
+DEFAULT_PRICING_CSV_PATH: Path = PROJECT_ROOT / 'docs' / 'pricing.csv'
+
+# Batch API Endpoint
+BATCH_API_ENDPOINT: str = "/v1/chat/completions"
+
+# Default prompts file path
+DEFAULT_PROMPTS_FILE: Path = PROJECT_ROOT / 'config' / 'prompts.yaml'
+
+# Default Batch Description
+DEFAULT_BATCH_DESCRIPTION: str = "Batch API Job via BatchGrader"
+
+# Default Poll Interval for checking batch job status (in seconds)
+DEFAULT_POLL_INTERVAL: int = 60

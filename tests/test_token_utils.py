@@ -1,11 +1,11 @@
 import pytest
 import pandas as pd
 from unittest.mock import MagicMock, patch
-from src.token_utils import (count_tokens_in_content, count_input_tokens,
-                             count_completion_tokens, create_token_counter,
-                             count_tokens_in_df, calculate_token_stats,
-                             check_token_limit, get_token_count_message,
-                             TokenLimitExceededError)
+from token_utils import (count_tokens_in_content, count_input_tokens,
+                         count_completion_tokens, create_token_counter,
+                         count_tokens_in_df, calculate_token_stats,
+                         check_token_limit, get_token_count_message,
+                         TokenLimitExceededError)
 
 
 class MockEncoder:

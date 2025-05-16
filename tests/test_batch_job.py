@@ -1,6 +1,8 @@
 import pytest
 import pandas as pd
-from src.batch_job import BatchJob
+from batch_job import BatchJob
+from unittest.mock import MagicMock, patch
+from exceptions import BatchGraderError
 
 
 @pytest.fixture
@@ -24,6 +26,17 @@ def sample_batch_job(sample_df):
                     chunk_file_path="test/input/_chunked/test_file_part_1.csv",
                     llm_model="gpt-4",
                     api_key_prefix="sk-test")
+
+
+@pytest.fixture
+def mock_job():
+    """Create a mock BatchJob instance for testing."""
+    return BatchJob(chunk_id_str="test_chunk_001",
+                    chunk_df=pd.DataFrame(),
+                    system_prompt="Test prompt",
+                    response_field="text",
+                    original_filepath="test.csv",
+                    chunk_file_path="test_chunk.csv")
 
 
 def test_batch_job_initialization(sample_df):
@@ -162,3 +175,19 @@ def test_batch_job_token_tracking(sample_batch_job):
     assert job.input_tokens == 100
     assert job.output_tokens == 50
     assert job.cost == 0.25
+
+
+def test_batch_job_with_invalid_file() -> None:
+    """Test BatchJob initialization with invalid parameters.\n\n    Args:\n        None\n\n    Returns:\n        None\n    """
+    # Create a job with nonexistent file, but verify it works
+    # Note: Based on the implementation, BatchJob doesn't validate file existence
+    job = BatchJob(chunk_id_str="invalid",
+                   chunk_df=None,
+                   system_prompt="test",
+                   response_field="text",
+                   original_filepath="nonexistent.csv",
+                   chunk_file_path="nonexistent_chunk.csv")
+
+    assert job.chunk_id_str == "invalid"
+    assert job.chunk_df is None
+    assert job.status == "pending"

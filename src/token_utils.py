@@ -1,8 +1,9 @@
 from typing import Any, Callable, Dict, Optional
+import logging
 
 from pandas import DataFrame, Series
 
-from logger import logger
+logger = logging.getLogger(__name__)
 
 
 class TokenLimitExceededError(Exception):

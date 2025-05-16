@@ -1,10 +1,12 @@
 from pathlib import Path
 import os
+import logging
 
 import yaml
 
-from logger import logger as global_logger
 from utils import ensure_config_files_exist as util_ensure_config_files_exist, deep_merge_dicts
+
+logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / 'config'
 CONFIG_PATH = CONFIG_DIR / 'config.yaml'
@@ -114,7 +116,7 @@ def load_config(config_path=None):
     Raises RuntimeError if it encounters a badly formatted config file.
     Raises ValueError if it encounters a missing config file.
     """
-    ensure_config_files(global_logger)
+    ensure_config_files(logger)
 
     if config_path is None:
         config_path = CONFIG_PATH

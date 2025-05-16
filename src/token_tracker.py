@@ -26,40 +26,43 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, TextIO
+from typing import Dict, List, Optional, TextIO, Any
 
 import pandas as pd
-
-from config_loader import load_config
+from input_splitter import FileNotFoundError as InputSplitterFileNotFoundError
 
 logger = logging.getLogger(__name__)
 
-config = load_config()
-LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output',
-                        'token_usage_log.json')
-EVENT_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                              'output', 'token_usage_events.jsonl')
-PRICING_CSV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                'docs', 'pricing.csv')
 
+def _get_api_key_prefix(api_key: Optional[str]):
+    """Generates a masked prefix for an API key for logging purposes.
 
-def _get_api_key_prefix(api_key):
+    If the key is shorter than 10 characters, or None/empty, returns '****'.
+    Otherwise, returns the first 10 characters followed by '**********'.
+
+    Args:
+        api_key: The API key string.
+
+    Returns:
+        A masked string representation of the API key's prefix.
+    """
     if not api_key or len(api_key) < 10:
         return '****'
     # Make sure to return exactly 10 characters followed by 10 asterisks
     return api_key[:10] + '**********'
 
 
-def _load_pricing() -> Dict[str, Dict[str, float]]:
+def _load_pricing(pricing_csv_path: Path) -> Dict[str, Dict[str, float]]:
     """
     Load model pricing from pricing.csv.
     Raises FileNotFoundError if the file is missing.
     Returns a dict of model -> {input, output} pricing.
     """
-    if not os.path.exists(PRICING_CSV_PATH):
-        raise FileNotFoundError(f"Pricing file not found: {PRICING_CSV_PATH}")
+    if not pricing_csv_path.exists():
+        raise InputSplitterFileNotFoundError(
+            f"Pricing file not found: {pricing_csv_path}")
     pricing = {}
-    with open(PRICING_CSV_PATH, 'r', encoding='utf-8') as f:
+    with open(pricing_csv_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)  # type: ignore
         for row in reader:
             model = row['Model']
@@ -74,54 +77,79 @@ def _load_pricing() -> Dict[str, Dict[str, float]]:
     return pricing
 
 
-def _load_log():
-    if not os.path.exists(LOG_PATH):
+def _load_log(log_path: Path) -> List[Dict[str, Any]]:
+    """Loads a JSON log file into a list.
+
+    If the file doesn't exist or an error occurs during loading (e.g., invalid JSON),
+    an empty list is returned.
+
+    Args:
+        log_path: Path to the JSON log file.
+
+    Returns:
+        A list containing the log entries, or an empty list if loading fails.
+    """
+    if not log_path.exists():
         return []
     try:
-        with open(LOG_PATH, 'r', encoding='utf-8') as f:
+        with open(log_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception:
         return []
 
 
-def _save_log(log):
-    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-    with open(LOG_PATH, 'w', encoding='utf-8') as f:
+def _save_log(log: List[Dict[str, Any]], log_path: Path):
+    """Saves a list of log entries to a JSON file.
+
+    Ensures the parent directory for the log file exists.
+    The JSON is saved with an indent of 2 for readability.
+
+    Args:
+        log: A list of log entries to save.
+        log_path: Path to the JSON log file where entries will be saved.
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, 'w', encoding='utf-8') as f:
         json.dump(log, f, indent=2)
 
 
-def update_token_log(api_key, tokens_submitted, date_str=None):
+def update_token_log(api_key: str,
+                     tokens_submitted: int,
+                     log_path: Path,
+                     date_str: Optional[str] = None):
     """
     Add tokens to today's count for the given API key prefix. (Legacy, for API limit tracking)
     """
     if not date_str:
         date_str = datetime.now().strftime('%Y-%m-%d')
     prefix = _get_api_key_prefix(api_key)
-    log = _load_log()
+    log = _load_log(log_path)
     for entry in log:
         if entry['date'] == date_str and entry['api_key_prefix'] == prefix:
             entry['tokens_submitted'] += tokens_submitted
-            _save_log(log)
+            _save_log(log, log_path)
             return
     log.append({
         'date': date_str,
         'api_key_prefix': prefix,
         'tokens_submitted': tokens_submitted
     })
-    _save_log(log)
+    _save_log(log, log_path)
 
 
 def log_token_usage_event(api_key: str,
                           model: str,
                           input_tokens: int,
                           output_tokens: int,
+                          event_log_path: Path,
+                          pricing_csv_path: Path,
                           timestamp: Optional[str] = None,
                           request_id: Optional[str] = None):
     """
     Log a single successful API request to the append-only event log (JSONL).
     Calculates cost using pricing table (per 1M tokens). Only call after a successful response.
     """
-    pricing = _load_pricing()
+    pricing = _load_pricing(pricing_csv_path)
     if model not in pricing:
         input_price = output_price = 0.0
     else:
@@ -141,29 +169,30 @@ def log_token_usage_event(api_key: str,
     }
     if request_id:
         event['request_id'] = request_id
-    os.makedirs(os.path.dirname(EVENT_LOG_PATH), exist_ok=True)
-    with open(EVENT_LOG_PATH, 'a', encoding='utf-8') as f:
+    event_log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(event_log_path, 'a', encoding='utf-8') as f:
         f.write(json.dumps(event) + '\n')
 
 
-def load_token_usage_events() -> List[Dict]:
+def load_token_usage_events(event_log_path: Path) -> List[Dict]:
     """
     Load all token usage events from the append-only log.
     """
-    if not os.path.exists(EVENT_LOG_PATH):
+    if not event_log_path.exists():
         return []
-    with open(EVENT_LOG_PATH, 'r', encoding='utf-8') as f:
-        return [json.loads(line) for line in f if line.strip()]
+    with open(event_log_path, 'r', encoding='utf-8') as f:
+        return [json.loads(line.strip()) for line in f if line.strip()]
 
 
-def get_token_usage_summary(start_date: Optional[str] = None,
+def get_token_usage_summary(event_log_path: Path,
+                            start_date: Optional[str] = None,
                             end_date: Optional[str] = None,
                             group_by: str = 'day') -> Dict:
     """
     Aggregate token usage and cost over a date range. group_by: 'day'|'model'|'all'.
     Returns: { 'total_tokens': int, 'total_cost': float, 'breakdown': Dict }
     """
-    events = load_token_usage_events()
+    events = load_token_usage_events(event_log_path)
     summary = {'total_tokens': 0, 'total_cost': 0.0, 'breakdown': {}}
 
     def in_range(ts):
@@ -203,16 +232,21 @@ def get_token_usage_summary(start_date: Optional[str] = None,
     return summary
 
 
-def get_total_cost(start_date: Optional[str] = None,
+def get_total_cost(event_log_path: Path,
+                   start_date: Optional[str] = None,
                    end_date: Optional[str] = None) -> float:
     """
     Return total cost for the given date range (inclusive).
     """
-    return get_token_usage_summary(start_date, end_date,
+    return get_token_usage_summary(event_log_path,
+                                   start_date,
+                                   end_date,
                                    group_by='all')['total_cost']
 
 
-def get_token_usage_for_day(api_key, date_str=None):
+def get_token_usage_for_day(api_key: str,
+                            log_path: Path,
+                            date_str: Optional[str] = None) -> int:
     """
     Return tokens submitted for this key/date.
     """
@@ -221,7 +255,7 @@ def get_token_usage_for_day(api_key, date_str=None):
 
     # Generate the prefix in the same way it was stored
     prefix = _get_api_key_prefix(api_key)
-    log = _load_log()
+    log = _load_log(log_path)
 
     for entry in log:
         if entry['date'] == date_str and entry['api_key_prefix'] == prefix:

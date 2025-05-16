@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 
-from src.utils import deep_merge_dicts, ensure_config_files_exist
+from utils import deep_merge_dicts, ensure_config_files_exist
 
 
 def test_deep_merge_dicts_basic():

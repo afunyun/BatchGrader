@@ -5,12 +5,19 @@ import time
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
+import logging
 
 import openai
 from openai import OpenAI
 from rich.console import Console
 
-from logger import logger as global_logger_instance
+from constants import (BATCH_API_ENDPOINT, DEFAULT_BATCH_DESCRIPTION,
+                       DEFAULT_MODEL, DEFAULT_POLL_INTERVAL)
+# from logger import logger as global_logger_instance # DEPRECATED
+from token_utils import count_tokens_in_content
+from utils import get_encoder
+
+logger = logging.getLogger(__name__)
 
 
 def get_config_value(config: Dict[str, Any],
@@ -28,13 +35,8 @@ class SimulatedChunkFailureError(Exception):
 
 class LLMClient:
 
-    def __init__(self,
-                 model=None,
-                 api_key=None,
-                 endpoint=None,
-                 logger=None,
-                 config=None):
-        self.logger = logger or global_logger_instance
+    def __init__(self, model=None, api_key=None, endpoint=None, config=None):
+        self.logger = logging.getLogger(__name__)
         self.config = config or {}
 
         # Extract values from injected config or use provided parameters
@@ -55,13 +57,8 @@ class LLMClient:
             f"LLMClient initialized. Model: {self.model}, Endpoint: {self.endpoint}"
         )
 
-        # Optional: Initialize encoder if needed
-        self.encoder = None
-        try:
-            import tiktoken
-            self.encoder = tiktoken.encoding_for_model(self.model)
-        except Exception as e:
-            self.logger.warning(f"Failed to initialize encoder: {e}")
+        # Initialize encoder using centralized utility
+        self.encoder = get_encoder(self.model)
 
     def _prepare_batch_requests(self, df, system_prompt_content,
                                 response_field_name):
