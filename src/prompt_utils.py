@@ -1,7 +1,8 @@
+import os
 from pathlib import Path
-from .config_loader import CONFIG_DIR, is_examples_file_default
-from .evaluator import load_prompt_template
-from .logger import logger
+from config_loader import CONFIG_DIR, is_examples_file_default
+from evaluator import load_prompt_template
+from logger import logger
 
 
 def load_system_prompt(config: dict) -> str:

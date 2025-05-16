@@ -63,6 +63,12 @@ def test_force_chunk_count_warns_over_token(monkeypatch, cleanup_output):
                 warnings.append(msg)
             def event(self, msg):
                 pass
+            def debug(self, msg):
+                pass
+            def info(self, msg):
+                pass
+            def error(self, msg):
+                pass
         return L()
     files, tokens = split_file_by_token_limit(
         tmp, token_limit=100, count_tokens_fn=dummy_token_counter,

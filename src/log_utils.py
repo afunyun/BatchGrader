@@ -12,10 +12,11 @@ Configurable constants:
 - MAX_LOGS: Max logs to keep in output/logs/
 - MAX_ARCHIVE: Max logs to keep in output/logs/archive/
 """
-import os
+from pathlib import Path
 import shutil
+import os
 from datetime import datetime
-from src.config_loader import load_config
+from config_loader import load_config
 
 config = load_config()
 

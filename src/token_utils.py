@@ -1,6 +1,7 @@
+import logging
 from typing import Callable, Any, Dict, Union, Optional, Tuple
 from pandas import DataFrame, Series
-from .logger import logger
+from logger import logger
 
 class TokenLimitExceededError(Exception):
     """Raised when token limit is exceeded"""
@@ -81,7 +82,7 @@ def create_token_counter(
     """
     def token_counter(row: Dict[str, Any]) -> int:
         user_content = str(row.get(response_field, ''))
-        system_content = str(row.get(system_prompt_content, ''))
+        system_content = system_prompt_content 
         
         if prompt_template:
             prompt_text = prompt_template.format(
@@ -89,7 +90,7 @@ def create_token_counter(
                 user=user_content
             )
         else:
-            prompt_text = f"{system_content}{user_content}"
+            prompt_text = f"{system_content}\n{user_content}"
             
         return len(encoder.encode(prompt_text))
         

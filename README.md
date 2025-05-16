@@ -1,6 +1,16 @@
 # BatchGrader: Batch LLM Evaluation with OpenAI Batch API
 
-## Last updated: 2025-05-12
+## Last updated: 2025-05-15
+
+**0.5.0 (2025-05-15):**
+
+- Major architectural refactoring for better modularity and maintainability
+- Split core functionality into focused modules (`token_utils.py`, `file_processor.py`, `cli.py`)
+- Added operational modes: `batch` (default), `count` (token statistics), and `split` (file splitting)
+- Centralized configuration and constants in `constants.py`
+- Improved error handling and logging
+- Standardized on `pathlib.Path` for file operations
+- Enhanced test coverage and organization
 
 **0.4.5 (2025-05-12):**
 

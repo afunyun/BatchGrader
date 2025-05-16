@@ -2,670 +2,399 @@ import os
 import sys
 import datetime
 import logging
-import tempfile
 from pathlib import Path
 import asyncio
 import pandas as pd
-import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from .batch_job import BatchJob
-from .llm_client import LLMClient
-from .rich_display import RichJobTable
-from .logger import logger
-from .file_utils import prune_chunked_dir
-from .log_utils import prune_logs_if_needed
-from .data_loader import load_data, save_data
-from .config_loader import load_config
-from .cost_estimator import CostEstimator
-from .token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary, log_token_usage_event
-from .input_splitter import split_file_by_token_limit
-from .constants import LOG_DIR, ARCHIVE_DIR, MAX_BATCH_SIZE, DEFAULT_MODEL
-from .prompt_utils import load_system_prompt
-from .token_utils import count_input_tokens, count_completion_tokens, create_token_counter
-from .file_processor import process_file_wrapper, prepare_output_path
-from rich.live import Live
-from typing import Optional
+from llm_client import LLMClient
+from logger import logger
+from log_utils import prune_logs_if_needed
+from data_loader import load_data, save_data
+from config_loader import load_config
+from cost_estimator import CostEstimator
+from token_tracker import update_token_log, get_token_usage_for_day, get_token_usage_summary, log_token_usage_event
+from constants import (
+    LOG_DIR, 
+    ARCHIVE_DIR, 
+    MAX_BATCH_SIZE, 
+    DEFAULT_MODEL, 
+    DEFAULT_GLOBAL_TOKEN_LIMIT, 
+    DEFAULT_RESPONSE_FIELD,
+    DEFAULT_SPLIT_TOKEN_LIMIT
+)
+from prompt_utils import load_system_prompt
+from token_utils import create_token_counter
+from file_processor import process_file_wrapper, prepare_output_path, check_token_limits
+from input_splitter import split_file_by_token_limit
+from typing import Optional, List, Dict, Any, Tuple
 
-prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
+# prune_logs_if_needed is called here based on initial LOG_DIR, ARCHIVE_DIR
+# This needs to be called *after* args are parsed if --log-dir is used.
+# Will be handled by moving prune_logs_if_needed call into run_batch_processing.
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-
-def _generate_chunk_job_objects(original_filepath: str, 
-                                system_prompt_content: str, 
-                                config: dict, 
-                                tiktoken_encoding_func, 
-                                response_field: str,  
-                                llm_model_name: Optional[str], 
-                                api_key_prefix: Optional[str]
-                                ) -> list[BatchJob]:
-    """Splits the input file using input_splitter.split_file and creates BatchJob objects for each chunk."""
-    
-    splitter_config = config.get('input_splitter_options', {})
-    max_tokens_per_chunk = splitter_config.get('max_tokens_per_chunk', config.get('split_token_limit', 20000))
-    max_rows_per_chunk = splitter_config.get('max_rows_per_chunk', config.get('split_row_limit', None))
-    force_chunk_count_val = splitter_config.get('force_chunk_count', None)
-
-    logger.debug(f"Generating chunk job objects for: {original_filepath}")
-    logger.debug(f"Using splitter config: max_tokens={max_tokens_per_chunk}, max_rows={max_rows_per_chunk}, force_chunks={force_chunk_count_val}")
-
-    if not hasattr(tiktoken_encoding_func, 'encode'):
-        logger.error(f"Invalid tiktoken_encoding_func passed. Type: {type(tiktoken_encoding_func)}. Attempting to load default.")
-        try:
-            import tiktoken
-            tiktoken_encoding_func = tiktoken.get_encoding("cl100k_base") 
-        except Exception as e:
-            logger.critical(f"Failed to load default tiktoken encoder: {e}. Chunking will likely fail.", exc_info=True)
-            return []
-
-    def _count_row_tokens(row):
-        row_content = " ".join(str(value) for value in row.values if pd.notna(value))
-        full_content_for_tokenization = system_prompt_content + "\n" + row_content
-        return len(tiktoken_encoding_func.encode(full_content_for_tokenization))
+def process_file(filepath_str: str, output_dir_str: str, config: Dict[str, Any]) -> bool:
+    """
+    Processes a single file using the new file_processor.process_file_wrapper.
+    This function now acts as a simpler interface to the core processing logic.
+    """
+    filepath = Path(filepath_str)
+    output_dir = Path(output_dir_str)
+    logger.info(f"Initiating processing for: {filepath.name} -> {output_dir}")
 
     try:
-        chunk_file_paths, _ = split_file_by_token_limit(
-            input_path=original_filepath,
-            token_limit=max_tokens_per_chunk,
-            count_tokens_fn=_count_row_tokens,
+        system_prompt_content = load_system_prompt(config)
+        response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD)
+        
+        # Get encoder (tiktoken)
+        # This might be better suited inside file_processor or llm_client if always the same
+        encoder = None
+        try:
+            llm_client_for_encoder = LLMClient() # Temporary client to get encoder
+            encoder = llm_client_for_encoder.encoder
+            if encoder is None:
+                raise ValueError("LLMClient did not provide an encoder.")
+        except Exception as e:
+            logger.error(f"Failed to get encoder: {e}. Token counting and splitting might be affected.")
+            # Decide if we should proceed without an encoder or raise an error / return False
+            # For now, we'll let process_file_wrapper handle it, it might have fallbacks or raise.
+
+        # Use global token limit from constants, overridden by config if present
+        token_limit = config.get('global_token_limit', DEFAULT_GLOBAL_TOKEN_LIMIT)
+        
+        # Delegate to the centralized file processing wrapper
+        success = process_file_wrapper(
+            filepath=str(filepath), # process_file_wrapper might still expect string paths
+            output_dir=str(output_dir),
+            config=config,
+            system_prompt_content=system_prompt_content,
             response_field=response_field,
-            row_limit=max_rows_per_chunk,
-            force_chunk_count=force_chunk_count_val,
-            logger=logger
+            encoder=encoder, 
+            token_limit=token_limit
         )
-    except Exception as e:
-        logger.error(f"Error during file splitting for {original_filepath}: {e}", exc_info=True)
-        return [] 
-
-    if not chunk_file_paths:
-        logger.warning(f"No chunk files generated by input_splitter for {original_filepath}. The file might be empty or unreadable.")
-        return []
-
-    jobs = []
-    for i, chunk_path in enumerate(chunk_file_paths):
-        try:
-            logger.debug(f"Loading chunk file: {chunk_path}")
-            chunk_df = load_data(chunk_path)
-            if chunk_df is None or chunk_df.empty:
-                logger.warning(f"Skipping empty or unreadable chunk file: {chunk_path}")
-                continue
-
-            if 'custom_id' not in chunk_df.columns:
-                if 'id' in chunk_df.columns:
-                    chunk_df = chunk_df.rename(columns={'id': 'custom_id'})
-                    logger.info(f"Renamed 'id' to 'custom_id' for chunk: {os.path.basename(chunk_path)}")
-                else:
-                    logger.warning(f"Neither 'custom_id' nor 'id' column found in chunk: {os.path.basename(chunk_path)}. This might cause issues if LLMClient requires an ID.")
-            
-            if 'custom_id' in chunk_df.columns:
-                if not pd.api.types.is_string_dtype(chunk_df['custom_id']):
-                    logger.debug(f"Casting 'custom_id' to string for chunk: {os.path.basename(chunk_path)} because current type is {chunk_df['custom_id'].dtype}")
-                    chunk_df['custom_id'] = chunk_df['custom_id'].astype(str)
-
-            job = BatchJob(
-                chunk_id_str=os.path.splitext(os.path.basename(chunk_path))[0],
-                chunk_df=chunk_df,
-                system_prompt=system_prompt_content,
-                response_field=response_field, 
-                original_filepath=original_filepath, 
-                chunk_file_path=chunk_path, 
-                llm_model=llm_model_name, 
-                api_key_prefix=api_key_prefix, 
-                status="pending" 
-            )
-            jobs.append(job)
-        except Exception as e:
-            logger.error(f"Error processing chunk file {chunk_path} into BatchJob: {e}", exc_info=True)
-            failed_job = BatchJob(
-                chunk_id_str=os.path.splitext(os.path.basename(chunk_path))[0] if chunk_path else f"failed_chunk_preparation_{i}",
-                chunk_df=None, 
-                system_prompt=system_prompt_content,
-                response_field=response_field, 
-                original_filepath=original_filepath,
-                chunk_file_path=chunk_path,
-                llm_model=llm_model_name, 
-                api_key_prefix=api_key_prefix, 
-                status="error", 
-                error_message=f"Failed to load/prepare BatchJob from chunk: {e}",
-                error_details=traceback.format_exc()
-            )
-            jobs.append(failed_job)
-            
-    logger.info(f"Generated {len(jobs)} BatchJob objects from {original_filepath}.")
-    return jobs
-
-
-def _execute_single_batch_job_task(batch_job: BatchJob, llm_client: LLMClient, response_field_name: str):
-    """
-    Worker function to process a single BatchJob chunk.
-    Updates batch_job status and results in place.
-    Returns the updated batch_job object.
-    """
-    if batch_job.chunk_df is None or batch_job.chunk_df.empty:
-        if batch_job.status != "error": #           
-            batch_job.status = "error"
-            batch_job.error_message = "Chunk DataFrame is None or empty."
-            batch_job.error_details = "Chunk DataFrame was not loaded or was empty when task started."
-            logger.error(f"[{batch_job.chunk_id_str}] Skipping task execution: {batch_job.error_message}")
-        return batch_job
-
-    try:
-        batch_job.status = "running" 
-
-        if 'custom_id' not in batch_job.chunk_df.columns:
-            logger.warning(f"[{batch_job.chunk_id_str}] 'custom_id' column is missing from chunk_df at the start of _execute_single_batch_job_task. This might cause issues with mocks or specific LLMClient implementations.")
-
-        api_result = llm_client.run_batch_job(
-            batch_job.chunk_df,
-            batch_job.system_prompt,
-            response_field_name=response_field_name,
-            base_filename_for_tagging=batch_job.chunk_id_str
-        )
-        if isinstance(api_result, pd.DataFrame):
-            batch_job.result_data = api_result
-            batch_job.status = "completed"
-            logger.debug(f"[{batch_job.chunk_id_str}] Task completed, result is DataFrame.")
-        elif isinstance(api_result, dict) and ('error' in api_result or 'custom_id_of_failed_item' in api_result): 
-            batch_job.status = "failed"
-            batch_job.error_message = api_result.get('error_message', api_result.get('error', str(api_result)))
-            batch_job.error_details = api_result
-            batch_job.result_data = None
-            logger.warning(f"[{batch_job.chunk_id_str}] Task resulted in failure (dict returned): {batch_job.error_message}")
+        
+        if success:
+            logger.success(f"Successfully processed {filepath.name}.")
         else:
-            batch_job.status = "error"
-            batch_job.error_message = f"Unexpected API result type: {type(api_result)}"
-            batch_job.error_details = str(api_result)
-            batch_job.result_data = None
-            logger.error(f"[{batch_job.chunk_id_str}] Task failed with unexpected API result: {batch_job.error_message}")
-    except Exception as exc:
-        logger.error(f"[{batch_job.chunk_id_str}] Exception in _execute_single_batch_job_task: {exc}", exc_info=True)
-        batch_job.status = "failed"
-        batch_job.error_message = str(exc)
-        batch_job.error_details = traceback.format_exc()
-        batch_job.result_data = None
+            logger.error(f"Failed to process {filepath.name}. See logs for details.")
+        return success
 
-    return batch_job
-
-
-def _pfc_submit_jobs(jobs_to_submit, response_field_name, max_workers_config):
-    llm_client = LLMClient() 
-    with ThreadPoolExecutor(max_workers=max_workers_config) as executor:
-        future_to_job_map = {executor.submit(_execute_single_batch_job_task, job, llm_client, response_field_name): job for job in jobs_to_submit}
-    return future_to_job_map
-
-
-def _pfc_handle_job_result(job_from_map, result_job_obj, completed_jobs_list):
-    if result_job_obj.status == "running": 
-        logger.info(f"Chunk {result_job_obj.chunk_id_str} reported running (final check)")
-    elif result_job_obj.status == "completed":
-        logger.success(f"Chunk {result_job_obj.chunk_id_str} completed successfully.")
-    elif result_job_obj.status == "failed":
-        logger.error(f"Chunk {result_job_obj.chunk_id_str} failed: {result_job_obj.error_message}")
-    else:
-        logger.warning(f"Chunk {result_job_obj.chunk_id_str} finished with unhandled status: {result_job_obj.status}")
-    
-    if result_job_obj not in completed_jobs_list: 
-        completed_jobs_list.append(result_job_obj)
-
-
-def _pfc_process_completed_future(
-    future,
-    future_to_job_map,
-    completed_jobs_list,
-    live_display,
-    rich_job_table,
-    all_jobs_list,
-    halt_on_failure_flag,
-    original_filepath,
-    llm_output_column_name
-):
-    """
-    Processes a single completed future from the concurrent execution pool.
-
-    Args:
-        future: The completed future object.
-        future_to_job_map: Dictionary mapping futures to BatchJob objects.
-        completed_jobs_list: List to append successfully processed BatchJob objects to.
-        live_display: The Rich Live display object to update.
-        rich_job_table: The RichJobTable instance used for building the table.
-        all_jobs_list: The full list of BatchJob objects for display updates.
-        halt_on_failure_flag: Boolean indicating if processing should stop on first failure.
-        original_filepath: Path of the original file being processed (for logging).
-        llm_output_column_name: Name of the column for LLM output.
-    Returns:
-        bool: True if a failure occurred and halt_on_failure is set, otherwise False.
-    """
-    job_from_future = future_to_job_map[future]
-    logger.info(f"Future completed for chunk {job_from_future.chunk_id_str}. Processing result...")
-    
-    try:
-        processed_job_in_task = future.result() 
-
-        job_from_future.status = processed_job_in_task.status
-        job_from_future.error_message = processed_job_in_task.error_message
-        job_from_future.error_details = processed_job_in_task.error_details
-        job_from_future.result_data = processed_job_in_task.result_data
-
-        logger.info(f"[{job_from_future.chunk_id_str}] Processed job status from task: {job_from_future.status}")
-        logger.debug(f"[{job_from_future.chunk_id_str}] Result data from task (type {type(job_from_future.result_data)}): {str(job_from_future.result_data)[:200]}")
-
-        if job_from_future.status == "completed":
-            if isinstance(job_from_future.result_data, pd.DataFrame):
-                completed_jobs_list.append(job_from_future)
-                logger.success(f"Chunk {job_from_future.chunk_id_str} completed successfully. DataFrame stored in BatchJob.")
-            else:
-                job_from_future.status = "error" 
-                job_from_future.error_message = f"Completed status but result_data is not DataFrame (type: {type(job_from_future.result_data)})"
-                logger.error(f"Chunk {job_from_future.chunk_id_str}: {job_from_future.error_message}")
-
-        if job_from_future.status == "failed" or job_from_future.status == "error":
-            logger.error(f"Chunk {job_from_future.chunk_id_str} reported as {job_from_future.status}. Error: {job_from_future.error_message}")
-            if halt_on_failure_flag:
-                logger.error(f"[HALT] {job_from_future.status.capitalize()} detected in chunk {job_from_future.chunk_id_str}. Halting.")
-                return True
-            else:
-                error_custom_id = None
-                if isinstance(job_from_future.error_details, dict):
-                    error_custom_id = job_from_future.error_details.get('custom_id', job_from_future.error_details.get('custom_id_of_failed_item'))
-                
-                if error_custom_id is None and job_from_future.chunk_df is not None and 'custom_id' in job_from_future.chunk_df.columns:
-                    error_custom_id = job_from_future.chunk_id_str
-                elif error_custom_id is None:
-                    error_custom_id = job_from_future.chunk_id_str
-
-                error_df_data = {
-                    'custom_id': error_custom_id,
-                    llm_output_column_name: f"ERROR: {job_from_future.error_message}",
-                    'error_type': job_from_future.status.capitalize() + 'Error',
-                    'original_file': original_filepath,
-                    'chunk_id': job_from_future.chunk_id_str
-                }
-                if isinstance(job_from_future.error_details, dict):
-                    error_df_data['error_details'] = str(job_from_future.error_details)
-
-                job_from_future.result_data = pd.DataFrame([error_df_data])
-                completed_jobs_list.append(job_from_future)
-                logger.warning(f"Chunk {job_from_future.chunk_id_str} {job_from_future.status} but continuing. BatchJob (with error info) added.")
-
+    except FileNotFoundError:
+        logger.error(f"[ERROR] Input file not found: {filepath}")
+        return False
+    except ValueError as ve:
+        logger.error(f"[ERROR] Configuration or input error for {filepath.name}: {ve}")
+        return False
     except Exception as e:
-        job_from_future.status = "error" 
-        job_from_future.error_message = f"Exception processing future for {job_from_future.chunk_id_str}: {e}"
-        job_from_future.error_details = traceback.format_exc()
-        logger.error(f"[{job_from_future.chunk_id_str}] Exception in _pfc_process_completed_future: {e}", exc_info=True)
-        
-        if not halt_on_failure_flag:
-            error_df = pd.DataFrame([{
-                'custom_id': job_from_future.chunk_id_str,
-                llm_output_column_name: f"ERROR: {job_from_future.error_message}",
-                'error_type': 'FutureProcessingError',
-                'original_file': original_filepath,
-                'chunk_id': job_from_future.chunk_id_str,
-                'error_details': traceback.format_exc()
-            }])
-            job_from_future.result_data = error_df
-            completed_jobs_list.append(job_from_future)
-            logger.error(f"Chunk {job_from_future.chunk_id_str} had future processing error but continuing. BatchJob (with error info) added.")
-        elif halt_on_failure_flag:
-            logger.error(f"[HALT] Future processing error for {job_from_future.chunk_id_str}. Halting.")
-            return True 
+        logger.error(f"[CRITICAL ERROR] Unexpected error processing {filepath.name}: {e}", exc_info=True)
+        # Log to a specific error file for this run might be good if not already handled by process_file_wrapper
+        return False
 
-    if live_display: live_display.update(rich_job_table.build_table(all_jobs_list))
-    
-    if (job_from_future.status == "failed" or job_from_future.status == "error") and halt_on_failure_flag:
-        return True 
-
-    return False 
-
-def _pfc_aggregate_and_cleanup(completed_jobs_list: list[BatchJob], 
-                                                    original_filepath: str,
-                                                    response_field_name: str) -> Optional[pd.DataFrame]:
-    """Aggregates results from completed jobs and cleans up chunked files."""
-    all_results_dfs = []
-    total_processed_rows = 0 
-    original_file_stem = Path(original_filepath).stem
-
-    for job in completed_jobs_list:
-        if job.status == "completed" and job.result_data is not None and not job.result_data.empty:
-            all_results_dfs.append(job.result_data)
-            total_processed_rows += len(job.result_data)
-        elif job.status == "failed" and job.chunk_df is not None and not job.chunk_df.empty:
-            failed_chunk_df_copy = job.chunk_df.copy()
-            failed_chunk_df_copy[response_field_name] = job.error_message 
-            all_results_dfs.append(failed_chunk_df_copy)
-        elif job.status == "error" and job.chunk_df is not None and not job.chunk_df.empty: 
-            error_chunk_df_copy = job.chunk_df.copy()
-            error_chunk_df_copy[response_field_name] = job.error_message or "Error during job preparation"
-            all_results_dfs.append(error_chunk_df_copy)
-            logger.info(f"Job {job.chunk_id_str} had preparation error. Original data with error message added to final output.")
-
-
-    if not all_results_dfs:
-        logger.error(f"[FAILURE] All chunks failed or yielded no results for {os.path.basename(original_filepath)}. No aggregated file produced.")
-        chunked_dir_path = os.path.join(os.path.dirname(original_filepath), '_chunked')
-        if os.path.exists(chunked_dir_path):
-            prune_chunked_dir(chunked_dir_path)
-        return None
-
-    combined_df = pd.concat(all_results_dfs, ignore_index=True)
-    logger.success(f"Results aggregated for {os.path.basename(original_filepath)}. {total_processed_rows} rows processed.")
-    # Ensure original 'id' column is present if 'custom_id' was used
-    if 'custom_id' in combined_df.columns and 'id' not in combined_df.columns:
-        combined_df['id'] = combined_df['custom_id']
-        logger.debug(f"Added 'id' column to aggregated results, copied from 'custom_id'.")
-    
-    chunked_dir_path = os.path.join(os.path.dirname(original_filepath), '_chunked')
-    if os.path.exists(chunked_dir_path): 
-        prune_chunked_dir(chunked_dir_path)
-    return combined_df
-
-def process_file_concurrently(filepath, config, system_prompt_content, response_field, llm_model_name, api_key_prefix, tiktoken_encoding_func):
-    """
-    Process a file concurrently by dividing it into chunks.
-    
-    Args:
-        filepath: Path to the input file
-        config: Configuration dictionary
-        system_prompt_content: System prompt content
-        response_field: Response field name
-        llm_model_name: LLM model name
-        api_key_prefix: API key prefix for token logging
-        tiktoken_encoding_func: Tokenizer encoder
-        
-    Returns:
-        DataFrame with aggregated results or None if processing failed
-    """
-    jobs = _generate_chunk_job_objects(
-        original_filepath=filepath, 
-        system_prompt_content=system_prompt_content, 
-        config=config, 
-        tiktoken_encoding_func=tiktoken_encoding_func,
-        response_field=response_field,  
-        llm_model_name=llm_model_name, 
-        api_key_prefix=api_key_prefix 
-    )
-    
-    if not jobs:
-        logger.info(f"No data loaded from {filepath}. Skipping.")
-        return None
-        
-    halt_on_failure = config.get('halt_on_chunk_failure', True)
-    completed_jobs = []
-    rich_table = RichJobTable() 
-    failure_detected = False
-
-    future_to_job = _pfc_submit_jobs(jobs, response_field, config.get('max_simultaneous_batches', 2))
-
-    try:
-        llm_output_column_name = config.get('llm_output_column_name', 'llm_response')
-        with Live(rich_table.build_table(jobs), console=rich_table.console, refresh_per_second=5) as live:
-            for future in as_completed(future_to_job):
-                failure_detected = _pfc_process_completed_future(
-                    future,
-                    future_to_job,
-                    completed_jobs,
-                    live,
-                    rich_table,
-                    jobs,
-                    halt_on_failure,
-                    filepath,
-                    llm_output_column_name
-                )
-                if failure_detected:
-                    break
-            
-            if failure_detected:
-                cancelled_count = 0
-                for fut_to_cancel in future_to_job:
-                    if not fut_to_cancel.done():
-                        if fut_to_cancel.cancel():
-                            cancelled_count += 1
-                if cancelled_count > 0:
-                    logger.warning(f"Cancelled {cancelled_count} pending chunk jobs due to halt on failure for {os.path.basename(filepath)}.")
-        
-        logger.info(f"All chunks processed for {os.path.basename(filepath)}. Aggregating results...")
-        return _pfc_aggregate_and_cleanup(completed_jobs, filepath, response_field)
-    finally:
-        # Placeholder for future cleanup operations if needed
-        pass
-
-
-def process_file(filepath, output_dir):
-    """
-    Processes a single input file using the OpenAI Batch API workflow via LLMClient.
-    Loads data, prepares batch requests, manages the batch job, processes results, and saves output.
-    Handles errors and logs appropriately.
-    Enforces configured token limit per batch, halts and warns if exceeded, and logs daily submitted tokens per API key (censored) in output/token_usage_log.json.
-    Returns:
-        True if successful, False if any error or batch job failure.
-    """
-    # Load system prompt and configuration
-    system_prompt_content = load_system_prompt(config)
-    model_name = config.get('openai_model_name', DEFAULT_MODEL)
-    token_limit = config.get('token_limit', 2_000_000)
-    
-    # Load encoder
-    try:
-        import tiktoken
-        encoder = tiktoken.encoding_for_model(model_name)
-    except Exception as e:
-        logger.error("Critical tiktoken import/initialization error. Please ensure tiktoken is installed correctly (e.g., 'uv pip install -r requirements.txt'). Error details: " + str(e))
-        raise RuntimeError("tiktoken is essential for token counting and splitting. Installation or setup failed.")
-    
-    # Process the file using the unified file processing module
-    return process_file_wrapper(
-        filepath=filepath,
-        output_dir=output_dir,
-        config=config,
-        system_prompt_content=system_prompt_content,
-        response_field=RESPONSE_FIELD,
-        encoder=encoder,
-        token_limit=token_limit
-    )
-
-def get_request_mode(args):
-    """
-    Indicates in the CLI whether or not requests are being submitted or we're in a safe count/split mode.
-    """
-    if getattr(args, 'count_tokens', False) or getattr(args, 'split_tokens', False):
-        return "Split/Count (NO REQUESTS MADE)"
-    return "API Request/Batch"
+def get_request_mode(args: Any) -> str:
+    """Determines the request mode based on CLI arguments."""
+    if args.mode:
+        return args.mode.lower()
+    # Fallback or default logic if needed, though CLI should enforce mode
+    return "batch" # Default to batch if not specified, though argparse should handle this
 
 def print_token_cost_stats():
-    """
-    Prints token/cost usage stats (all time, today, per-model breakdown) using token_tracker utilities.
-    """
-    from datetime import datetime
-    today = datetime.now().strftime('%Y-%m-%d')
-    logger.info("\n================= TOKEN USAGE & COST STATS =================")
-    logger.info("ALL TIME:")
-    summary_all = get_token_usage_summary()
-    print_token_cost_summary(summary_all)
-    logger.info("\nTODAY:")
-    summary_today = get_token_usage_summary(start_date=today, end_date=today)
-    print_token_cost_summary(summary_today)
-    logger.info("===========================================================\n")
+    """Prints token usage statistics for the current day."""
+    try:
+        llm_client = LLMClient() # To get API key
+        api_key = llm_client.api_key 
+        daily_usage = get_token_usage_for_day(api_key)
+        if daily_usage:
+            logger.info("Token Usage Stats (Today):")
+            logger.info(f"  Total Tokens: {daily_usage['total_tokens']}")
+            logger.info(f"  Estimated Cost: ${daily_usage['estimated_cost']:.4f}")
+            # Add more details if available in daily_usage
+        else:
+            logger.info("No token usage recorded for today or failed to retrieve stats.")
+    except Exception as e:
+        logger.error(f"Could not retrieve daily token stats: {e}")
 
-def print_token_cost_summary(summary):
-    total_tokens = summary.get('total_tokens', 0)
-    total_cost = summary.get('total_cost', 0.0)
-    breakdown = summary.get('breakdown', {})
-    logger.info(f"  Total tokens: {total_tokens:,}")
-    logger.info(f"  Total cost: ${total_cost:,.6f}")
-    if breakdown:
-        logger.info("  Per-model breakdown:")
-        logger.info("    Model           | Tokens      | Cost      | Count")
-        logger.info("    --------------- | ----------- | --------- | -----")
-        for model, stats in breakdown.items():
-            tokens = stats.get('tokens', 0)
-            cost = stats.get('cost', 0.0)
-            count = stats.get('count', 0)
-            logger.info(f"    {model:<15} | {tokens:>11,} | ${cost:>8,.4f} | {count:>5}")
+def print_token_cost_summary(summary_file_path: Optional[str] = None):
+    """Prints a summary of token usage from the summary file."""
+    try:
+        llm_client = LLMClient()
+        api_key = llm_client.api_key
+        
+        # Default path if not provided, using LOG_DIR which should be configured
+        # This summary path might need to be more robustly defined, perhaps via constants or config
+        default_summary_path = LOG_DIR / f"token_usage_summary_{api_key[:8]}.json"
+        actual_summary_path = Path(summary_file_path) if summary_file_path else default_summary_path
+
+        if actual_summary_path.exists():
+            summary = get_token_usage_summary(str(actual_summary_path)) # get_token_usage_summary might expect str
+            if summary:
+                logger.info("Overall Token Usage Summary (from file):")
+                logger.info(f"  Total Tokens (Overall): {summary['total_tokens_all_time']}")
+                logger.info(f"  Estimated Cost (Overall): ${summary['total_estimated_cost_all_time']:.4f}")
+                # Add more details as available
+            else:
+                logger.info(f"Token usage summary file is empty or invalid: {actual_summary_path}")
+        else:
+            logger.info(f"Token usage summary file not found at: {actual_summary_path}")
+    except Exception as e:
+        logger.error(f"Could not print token cost summary: {e}")
+
+def run_batch_processing(args: Any, config: Dict[str, Any]):
+    """
+    Main function to run batch processing based on parsed arguments and configuration.
+    (CLI parsing will be moved to cli.py, this function will be called by cli.py)
+    """
+    # Ensure LOG_DIR and ARCHIVE_DIR from constants are updated if specified in args
+    # This must happen BEFORE prune_logs_if_needed if it relies on the final LOG_DIR
+    global LOG_DIR, ARCHIVE_DIR # Allow modification of global constants for this run
+    if hasattr(args, 'log_dir') and args.log_dir:
+        LOG_DIR = Path(args.log_dir).resolve()
+        # Update ARCHIVE_DIR relative to the new LOG_DIR
+        ARCHIVE_DIR = LOG_DIR / 'archive' 
+        logger.info(f"Log directory overridden by CLI: {LOG_DIR}")
+        logger.info(f"Archive directory updated to: {ARCHIVE_DIR}")
+    
+    # Now that LOG_DIR and ARCHIVE_DIR are finalized, prune logs
+    prune_logs_if_needed(LOG_DIR, ARCHIVE_DIR)
+
+    if args.input_file:
+        files_to_process_str = [args.input_file]
+    elif args.input_dir:
+        input_directory = Path(args.input_dir)
+        if not input_directory.is_dir():
+            logger.error(f"[ERROR] Input directory not found or not a directory: {input_directory}")
+            return
+        files_to_process_str = [str(f) for f in input_directory.iterdir() if f.is_file() and f.name.endswith(('.csv', '.xlsx', '.jsonl'))]
+        if not files_to_process_str:
+            logger.warning(f"No suitable files (csv, xlsx, jsonl) found in directory: {input_directory}")
+            return
+    else:
+        logger.error("[ERROR] No input file or directory specified. Use --input-file or --input-dir.")
+        return
+
+    output_directory_str = args.output_dir if args.output_dir else str(Path.cwd() / "output" / "batch_results") # Default output
+    output_directory = Path(output_directory_str)
+    output_directory.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Output directory set to: {output_directory}")
+
+    overall_success = True
+    processed_files_count = 0
+    failed_files_count = 0
+
+    for filepath_str in files_to_process_str:
+        filepath = Path(filepath_str)
+        logger.info(f"\n--- Starting processing for: {filepath.name} ---")
+        success = process_file(str(filepath), str(output_directory), config) # process_file expects strings for now
+        if success:
+            processed_files_count += 1
+        else:
+            failed_files_count += 1
+            overall_success = False # If any file fails, overall is not a complete success
+        logger.info(f"--- Finished processing for: {filepath.name} ---")
+
+    logger.info("\nBatch processing finished.")
+    logger.info(f"Successfully processed files: {processed_files_count}")
+    logger.info(f"Failed files: {failed_files_count}")
+
+    if args.stats:
+        print_token_cost_stats()
+        print_token_cost_summary() # Consider passing a configured summary path if needed
+
+    if not overall_success and failed_files_count > 0:
+        logger.warning("Some files failed to process. Please check the logs.")
+        # Potentially exit with a non-zero status code if this is the main script part
+        # sys.exit(1) # This would be for the final __main__ in cli.py
+
+def run_count_mode(args: Any, config: Dict[str, Any]):
+    """Runs the token counting mode for input files."""
+    logger.info("--- Running in COUNT mode ---")
+    
+    global LOG_DIR, ARCHIVE_DIR # Allow modification of global constants for this run
+    if hasattr(args, 'log_dir') and args.log_dir:
+        LOG_DIR = Path(args.log_dir).resolve()
+        ARCHIVE_DIR = LOG_DIR / 'archive'
+        logger.info(f"Log directory overridden by CLI: {LOG_DIR}")
+    # No log pruning needed for count mode as it's typically non-invasive
+
+    if args.input_file:
+        files_to_process_str = [args.input_file]
+    elif args.input_dir:
+        input_directory = Path(args.input_dir)
+        if not input_directory.is_dir():
+            logger.error(f"[ERROR] Input directory not found or not a directory: {input_directory}")
+            return
+        files_to_process_str = [str(f) for f in input_directory.iterdir() if f.is_file() and f.name.endswith(('.csv', '.xlsx', '.jsonl'))]
+        if not files_to_process_str:
+            logger.warning(f"No suitable files (csv, xlsx, jsonl) found in directory: {input_directory}")
+            return
+    else:
+        logger.error("[ERROR] No input file or directory specified for count mode.")
+        return
+
+    system_prompt_content = load_system_prompt(config)
+    response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD)
+    # For counting, we usually want to see stats even if it exceeds a processing limit
+    # So, we use a very high token_limit for the check_token_limits function or just directly count.
+    # check_token_limits conveniently returns stats. We'll use a dummy high limit.
+    # However, check_token_limits itself logs errors if limit is exceeded, which might be confusing in "count" mode.
+    # Let's refine this: we need an encoder first.
+
+    encoder = None
+    try:
+        llm_client_for_encoder = LLMClient()
+        encoder = llm_client_for_encoder.encoder
+        if encoder is None:
+            raise ValueError("LLMClient did not provide an encoder for token counting.")
+    except Exception as e:
+        logger.error(f"Failed to get encoder: {e}. Cannot perform token counting.")
+        return
+        
+    total_files_counted = 0
+    for filepath_str in files_to_process_str:
+        filepath = Path(filepath_str)
+        logger.info(f"Counting tokens for: {filepath.name}")
+        try:
+            df = load_data(str(filepath))
+            if df.empty:
+                logger.warning(f"File {filepath.name} is empty. Skipping token count.")
+                continue
+
+            # Using check_token_limits just to get the stats dictionary.
+            # The actual limit check (True/False) isn't the primary concern here, but the stats are.
+            # We pass a very large token_limit to avoid triggering "limit exceeded" logs from check_token_limits.
+            # An alternative would be to reimplement the counting part of check_token_limits here.
+            # For now, let's use check_token_limits with a practically infinite limit for counting.
+            _is_valid, token_stats = check_token_limits(
+                df, system_prompt_content, response_field, encoder, token_limit=float('inf') 
+            )
+            
+            if token_stats: # If token_stats were successfully calculated
+                logger.info(f"Token statistics for {filepath.name}:")
+                logger.info(f"  Total tokens: {token_stats.get('total', 'N/A')}")
+                logger.info(f"  Average tokens per row: {token_stats.get('average', 'N/A'):.2f}")
+                logger.info(f"  Max tokens in a row: {token_stats.get('max', 'N/A')}")
+                total_files_counted += 1
+            else:
+                logger.error(f"Could not calculate token stats for {filepath.name}.")
+
+        except FileNotFoundError:
+            logger.error(f"File not found: {filepath}")
+        except Exception as e:
+            logger.error(f"Error counting tokens for {filepath.name}: {e}", exc_info=True)
+    
+    logger.info(f"--- COUNT mode finished. Counted tokens for {total_files_counted} file(s). ---")
+
+
+def run_split_mode(args: Any, config: Dict[str, Any]):
+    """Runs the file splitting mode for input files."""
+    logger.info("--- Running in SPLIT mode ---")
+
+    global LOG_DIR, ARCHIVE_DIR 
+    if hasattr(args, 'log_dir') and args.log_dir:
+        LOG_DIR = Path(args.log_dir).resolve()
+        ARCHIVE_DIR = LOG_DIR / 'archive'
+        logger.info(f"Log directory overridden by CLI: {LOG_DIR}")
+    # No log pruning needed for split mode. Output is chunked files.
+
+    if args.input_file:
+        files_to_process_str = [args.input_file]
+    elif args.input_dir:
+        input_directory = Path(args.input_dir)
+        if not input_directory.is_dir():
+            logger.error(f"[ERROR] Input directory not found or not a directory: {input_directory}")
+            return
+        files_to_process_str = [str(f) for f in input_directory.iterdir() if f.is_file() and f.name.endswith(('.csv', '.xlsx', '.jsonl'))]
+        if not files_to_process_str:
+            logger.warning(f"No suitable files (csv, xlsx, jsonl) found in directory: {input_directory}")
+            return
+    else:
+        logger.error("[ERROR] No input file or directory specified for split mode.")
+        return
+
+    system_prompt_content = load_system_prompt(config)
+    response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD)
+    
+    # Get encoder (tiktoken)
+    encoder = None
+    try:
+        llm_client_for_encoder = LLMClient()
+        encoder = llm_client_for_encoder.encoder
+        if encoder is None:
+            raise ValueError("LLMClient did not provide an encoder for splitting.")
+    except Exception as e:
+        logger.error(f"Failed to get encoder: {e}. Cannot perform file splitting.")
+        return
+
+    # Splitting parameters from config or constants
+    splitter_options = config.get('input_splitter_options', {})
+    token_limit_per_chunk = splitter_options.get('max_tokens_per_chunk', config.get('split_token_limit', DEFAULT_SPLIT_TOKEN_LIMIT))
+    row_limit_per_chunk = splitter_options.get('max_rows_per_chunk', config.get('split_row_limit', None)) # Default to None if not specified
+    force_chunk_count = splitter_options.get('force_chunk_count', None) # Default to None
+
+    # Output directory for chunks (defaults to input file's directory in a '_chunked' subfolder)
+    # The `split_file_by_token_limit` function handles creating the _chunked dir.
+    # We don't use args.output_dir here directly as split_file outputs relative to input.
+
+    total_files_split = 0
+    for filepath_str in files_to_process_str:
+        filepath = Path(filepath_str)
+        logger.info(f"Splitting file: {filepath.name} by token/row limits.")
+        
+        try:
+            # The count_tokens_fn for the splitter needs to be defined.
+            # It should take a row (pd.Series) and return token count.
+            # We can reuse or adapt logic from create_token_counter or its internal workings.
+            # For simplicity, let's use the one from _generate_chunk_job_objects in file_processor if possible or recreate.
+            # Recreating here for clarity and independence:
+            def _row_token_counter_for_splitter(row: pd.Series) -> int:
+                row_content = " ".join(str(value) for value in row.values if pd.notna(value))
+                # This is a simplified version. If system_prompt is per row or complex, this needs adjustment.
+                # For now, assume system_prompt is global and handled by batch job, not part of row data for splitting count.
+                # Or, if we want the split to reflect system prompt usage PER CHUNK (which is more accurate for LLM calls):
+                # This depends on how token_limit_per_chunk is meant to be interpreted.
+                # Let's align with _generate_chunk_job_objects's _count_row_tokens which INCLUDES system prompt.
+                full_content_for_tokenization = system_prompt_content + "\n" + row_content
+                return len(encoder.encode(full_content_for_tokenization))
+
+
+            chunk_paths, input_file_token_count = split_file_by_token_limit(
+                input_path=str(filepath),
+                token_limit=token_limit_per_chunk,
+                count_tokens_fn=_row_token_counter_for_splitter, 
+                response_field=response_field, # May not be strictly needed by splitter if count_tokens_fn is good
+                row_limit=row_limit_per_chunk,
+                force_chunk_count=force_chunk_count,
+                output_dir=None, # Let splitter use its default output dir (_chunked next to input)
+                logger_override=logger # Pass our logger
+            )
+
+            if chunk_paths:
+                logger.success(f"Successfully split {filepath.name} into {len(chunk_paths)} chunks:")
+                for chunk_path in chunk_paths:
+                    logger.info(f"  - {chunk_path}")
+                if input_file_token_count is not None:
+                     logger.info(f"Original file '{filepath.name}' estimated token count (by splitter): {input_file_token_count}")
+                total_files_split += 1
+            else:
+                logger.warning(f"File {filepath.name} was not split. It might be smaller than chunk limits or empty.")
+
+        except FileNotFoundError:
+            logger.error(f"File not found: {filepath}")
+        except Exception as e:
+            logger.error(f"Error splitting file {filepath.name}: {e}", exc_info=True)
+
+    logger.info(f"--- SPLIT mode finished. Split {total_files_split} file(s). ---")
+
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="BatchGrader Runner")
-    parser.add_argument('--log_dir', type=str, default=None, help='Directory for log files (default: output/logs or as set by test runner)')
-    args, unknown = parser.parse_known_args()
-    if args.log_dir:
-        logger = BatchGraderLogger(log_dir=args.log_dir)
-    parser = argparse.ArgumentParser(description="BatchGrader CLI: batch LLM evaluation, token counting, and input splitting.")
-    parser.add_argument('--count-tokens', action='store_true', help='Count tokens in input file(s) and print stats.')
-    parser.add_argument('--split-tokens', action='store_true', help='Split input file(s) into parts not exceeding the configured token limit.')
-    parser.add_argument('--file', type=str, default=None, help='Only process the specified file in the input directory.')
-    parser.add_argument('--config', type=str, default=None, help='Path to alternate config YAML file (default: config/config.yaml).')
-    parser.add_argument('--costs', action='store_true', help='Show token/cost usage stats and exit.')
-    parser.add_argument('--statistics', action='store_true', help='Show API usage stats even in count/split modes.')
-
-    if '--file' in sys.argv:
-        try:
-            file_arg_index = sys.argv.index('--file')
-            if file_arg_index + 1 >= len(sys.argv) or sys.argv[file_arg_index + 1].startswith('--'):
-                logger.error("usage: batch_runner.py [-h] [--count-tokens] [--split-tokens] [--file FILE] [--costs] [--statistics]")
-                logger.error("batch_runner.py: error: argument --file: expected one argument (the filename). It must be placed immediately after --file.")
-                logger.error("Example: python batch_runner.py --file my_data.csv")
-                sys.exit(2)
-        except ValueError: 
-            logger.error("severe oof error: basically something is COOKED if this happens") 
-            pass
-
-    args = parser.parse_args()
-    config = load_config(args.config)
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent
-    INPUT_DIR = str(PROJECT_ROOT / config['input_dir'])
-    OUTPUT_DIR = str(PROJECT_ROOT / config['output_dir'])
-    RESPONSE_FIELD = config['response_field']
-    TOKEN_LIMIT = config.get('token_limit', 2_000_000)
-    split_token_limit = config.get('split_token_limit', 500_000)
-    model_name = config['openai_model_name']
-
-    os.makedirs(INPUT_DIR, exist_ok=True)
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    show_stats = args.statistics or (not args.count_tokens and not args.split_tokens)
-
-    # Import and use the centralized LLM utilities
-    from .llm_utils import get_llm_client
-
-    llm_client = get_llm_client()
-    if not llm_client.api_key:
-        logger.error("Error: OPENAI_API_KEY not set in config/config.yaml.")
-        exit(1)
-    else:
-        tokens_today = get_token_usage_for_day(llm_client.api_key)
-        if show_stats:
-            logger.info("\n================= API USAGE =================")
-            logger.info(f"TOTAL TOKENS SUBMITTED TODAY: {tokens_today:,}")
-            logger.info(f"TOKEN LIMIT: {TOKEN_LIMIT}")
-            logger.info(f"TOKENS REMAINING: {TOKEN_LIMIT - tokens_today:,}")
-            logger.info(f"SPLIT TOKEN LIMIT: {split_token_limit}")
-            logger.info(f"System is running in {get_request_mode(args)} mode.")
-            logger.info("==============================================\n")
-
-    if getattr(args, 'costs', False):
-        print_token_cost_stats()
-        exit(0)
-
-    logger.info(f"Valid INPUT_DIR: {INPUT_DIR}")
-    logger.info(f"Valid OUTPUT_DIR: {OUTPUT_DIR}")
-
-    from pathlib import Path
-    def resolve_and_load_input_file(file_arg):
-        """
-        Resolves the file path for CLI input and loads the data.
-        - Absolute path: used as-is
-        - Relative with directory: resolved from project root
-        - Bare filename: resolved from input dir
-        Returns (resolved_path, DataFrame)
-        """
-        file_arg_path = Path(file_arg)
-        if file_arg_path.is_absolute():
-            resolved_path = str(file_arg_path)
-        elif file_arg_path.parent != Path('.'):
-            resolved_path = str((PROJECT_ROOT / file_arg_path).resolve())
-        else:
-            resolved_path = os.path.join(INPUT_DIR, file_arg)
-        if not os.path.exists(resolved_path):
-            logger.error(f"File {file_arg} not found at {resolved_path}.")
-            logger.error("Halting: Missing input file.")
-            exit(1)
-        df = load_data(resolved_path)
-        return resolved_path, df
-
-    files_found = []
-    if args.file:
-        resolved_path, df = resolve_and_load_input_file(args.file)
-        files_found = [(resolved_path, df)]
-    else:
-        files_found = []
-        for file_to_process in os.listdir(INPUT_DIR):
-            if file_to_process.endswith((".csv", ".json", ".jsonl")):
-                resolved_path, df = resolve_and_load_input_file(file_to_process)
-                files_found.append((resolved_path, df))
-    if not files_found:
-        logger.info(f"Nothing found in {INPUT_DIR} (looked for .csv, .json, .jsonl, if your data isn't in one of these formats please reformat.)")
-        exit(0)
-
-    for resolved_path, df in files_found:
-        try:
-            logger.info(f"\nProcessing file: {resolved_path}")
-            
-            # Load and format the system prompt
-            system_prompt_content = load_system_prompt(config)
-
-            try:
-                import tiktoken
-                enc = tiktoken.encoding_for_model(config.get('openai_model_name', DEFAULT_MODEL))
-            except Exception as e:
-                logger.error("Critical tiktoken import/initialization error. Please ensure tiktoken is installed correctly (e.g., 'uv pip install -r requirements.txt'). Error details: " + str(e))
-                raise RuntimeError("tiktoken is essential for token counting and splitting. Installation or setup failed.")
-
-            # Use token utilities from token_utils
-            from .token_utils import create_token_counter, get_token_count_message, calculate_token_stats
-
-            if args.count_tokens or args.split_tokens:
-                if enc is None:
-                    logger.error("tiktoken encoder (enc) is None, which should not happen if tiktoken imported successfully. This indicates a deeper issue.")
-                    raise RuntimeError("tiktoken encoder failed to initialize even after successful import.")
-                
-                # Count tokens using the centralized utility
-                token_counter = create_token_counter(system_prompt_content, RESPONSE_FIELD, enc)
-                token_counts = df.apply(token_counter, axis=1)
-                token_stats = calculate_token_stats(token_counts)
-                
-                # Log token count message
-                logger.info(get_token_count_message(token_stats))
-                
-                if args.split_tokens:
-                    display_name = os.path.basename(resolved_path)
-                    if token_stats['total'] <= TOKEN_LIMIT:
-                        logger.info(f"File {display_name} does not exceed the token limit. No split needed.")
-                    else:
-                        logger.info(f"Splitting {display_name} into chunks not exceeding {split_token_limit} tokens...")
-                        output_files, token_counts = split_file_by_token_limit(resolved_path, split_token_limit, token_counter, RESPONSE_FIELD, output_dir=INPUT_DIR)
-                        logger.info(f"Split complete. Output files: {output_files}")
-                        for out_file, tok_count in zip(output_files, token_counts):
-                            logger.info(f"  - {os.path.basename(out_file)}: {tok_count:,} tokens")
-            else:
-                # Process the file using our unified processing function
-                success = process_file(resolved_path, OUTPUT_DIR)
-                if not success:
-                    logger.warning(f"Processing {os.path.basename(resolved_path)} was not successful.")
-        except Exception as e:
-            logger.error(f"Error processing {resolved_path}: {e}", exc_info=True)
-            continue
-    logger.success("Batch finished processing.\n")
-
-    for handler in getattr(logger, 'file_logger', logging.getLogger()).handlers:
-        try:
-            handler.flush()
-        except Exception:
-            pass
-        try:
-            handler.close()
-        except Exception:
-            pass
-    print("[CLEANUP] Logger handlers flushed and closed.")
-
-    if show_stats:
-        print_token_cost_stats()
+    # Call the main function from the new cli.py module
+    try:
+        from cli import main as cli_main
+        cli_main()
+    except ImportError:
+        # This fallback might be useful if running batch_runner.py directly in a way that messes with relative imports
+        # However, the primary execution path should be via `python -m src.cli` or a setup.py entry point.
+        logger.error("Could not import cli.main. If running directly, ensure Python's import system can find src.cli.")
+        logger.error("Try running: python -m src.cli [your_args]")
+        # As a last resort for very direct script running for debugging, could try:
+        # import cli 
+        # cli.main()
+        # But this is not robust.

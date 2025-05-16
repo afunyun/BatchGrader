@@ -1,8 +1,8 @@
+import os
 import yaml
 from pathlib import Path
-import os
-from .utils import ensure_config_files_exist as util_ensure_config_files_exist
-from .logger import logger as global_logger
+from utils import ensure_config_files_exist as util_ensure_config_files_exist, deep_merge_dicts
+from logger import logger as global_logger
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / 'config'
 CONFIG_PATH = CONFIG_DIR / 'config.yaml'
@@ -120,7 +120,6 @@ def load_config(config_path=None):
         if config is None:
             config = DEFAULT_CONFIG.copy()
         else:
-            from src.utils import deep_merge_dicts
             merged = deep_merge_dicts(DEFAULT_CONFIG, config)
             config = merged
     except Exception as e:

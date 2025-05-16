@@ -1,8 +1,10 @@
 '''
 name is misleading because hindsight is 20/20, but this basically just loads the prompts and prepares the prompts for the main batch request constructor so it can add them to the .jsonl
 '''
+import os
+from pathlib import Path
 import yaml
-from src.config_loader import load_config
+from config_loader import load_config
 
 def load_prompt_template(name='evaluation_prompt'):
     """
