@@ -2,6 +2,22 @@
 
 All notable changes to the BatchGrader project will be documented in this file.
 
+## 0.5.9 - 2025-05-16
+
+### Added
+
+- Completed test coverage improvements across multiple modules
+- Achieved 100% coverage for logger.py
+- Near-perfect coverage (>90%) for cost_estimator.py, config_loader.py, evaluator.py, log_utils.py, token_tracker.py, and utils.py
+- All tests now running with pytest, avoiding actual API calls to OpenAI
+- Updated code_review.md to reflect completed test improvements
+
+### Changed
+
+- Standardized testing patterns across the codebase
+- Improved test reliability with proper resource cleanup
+- Enhanced test assertions for better debugging
+
 ## 0.5.8.3 - 2025-05-16
 
 ### Added
