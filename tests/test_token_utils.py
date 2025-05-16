@@ -52,10 +52,16 @@ def test_count_tokens_in_content_error_handling():
     # Create a mock encoder that raises an exception
     faulty_encoder = MagicMock()
     faulty_encoder.encode.side_effect = Exception("Encoding failed")
-
+    
+    # Mock the logger to prevent TypeError with level comparison
+    mock_logger = MagicMock()
+    
     # Should return 0 and log error
-    assert count_tokens_in_content("Some text", faulty_encoder) == 0
+    with patch('src.token_utils.logger', mock_logger):
+        assert count_tokens_in_content("Some text", faulty_encoder) == 0
+        
     faulty_encoder.encode.assert_called_once_with("Some text")
+    mock_logger.error.assert_called_once()
 
 
 def test_count_input_tokens(mock_encoder):

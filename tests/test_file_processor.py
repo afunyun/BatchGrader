@@ -15,8 +15,9 @@ from unittest.mock import patch, MagicMock, call
 
 # Import from src package
 from src.file_processor import (check_token_limits, prepare_output_path,
-                             calculate_and_log_token_usage, process_file_common,
-                             process_file_concurrently, ProcessingStats)
+                                calculate_and_log_token_usage,
+                                process_file_common, process_file_concurrently,
+                                ProcessingStats)
 from src.llm_client import LLMClient
 from src.config_loader import load_config
 from src.batch_job import BatchJob
@@ -186,32 +187,28 @@ def test_config_fp_continue_failure(temp_test_dir_fp):
     return cfg
 
 
-
 class TestProcessingStats:
+
     def test_duration_property(self):
         """Test the duration property of ProcessingStats."""
         # Case 1: start_time and end_time are set
         start = datetime.datetime(2023, 1, 1, 12, 0, 0)
         end = datetime.datetime(2023, 1, 1, 12, 0, 10)
-        stats_with_end_time = ProcessingStats(
-            input_path="in.txt",
-            output_path=str(Path("out.txt")),
-            rows_processed=10,
-            token_usage={},
-            start_time=start,
-            end_time=end
-        )
+        stats_with_end_time = ProcessingStats(input_path="in.txt",
+                                              output_path=str(Path("out.txt")),
+                                              rows_processed=10,
+                                              token_usage={},
+                                              start_time=start,
+                                              end_time=end)
         assert stats_with_end_time.duration == 10.0
 
         # Case 2: end_time is None (covers line 87 of file_processor.py)
-        stats_no_end_time = ProcessingStats(
-            input_path="in.txt",
-            output_path=str(Path("out.txt")),
-            rows_processed=10,
-            token_usage={},
-            start_time=start,
-            end_time=None
-        )
+        stats_no_end_time = ProcessingStats(input_path="in.txt",
+                                            output_path=str(Path("out.txt")),
+                                            rows_processed=10,
+                                            token_usage={},
+                                            start_time=start,
+                                            end_time=None)
         assert stats_no_end_time.duration is None
 
     def test_to_dict_method(self):
@@ -220,20 +217,27 @@ class TestProcessingStats:
         end_time_present = datetime.datetime(2023, 1, 1, 10, 30, 45)
 
         # Scenario 1: All fields populated, including error and Path object for output_path
-        stats_full = ProcessingStats(
-            input_path="data/input_file.csv",
-            output_path=str(Path("results/output_file.jsonl")),
-            rows_processed=200,
-            token_usage={"input_tokens": 15000, "output_tokens": 5000, "total_tokens": 20000},
-            start_time=start_time,
-            end_time=end_time_present,
-            error=ValueError("A test error occurred")
-        )
+        stats_full = ProcessingStats(input_path="data/input_file.csv",
+                                     output_path=str(
+                                         Path("results/output_file.jsonl")),
+                                     rows_processed=200,
+                                     token_usage={
+                                         "input_tokens": 15000,
+                                         "output_tokens": 5000,
+                                         "total_tokens": 20000
+                                     },
+                                     start_time=start_time,
+                                     end_time=end_time_present,
+                                     error=ValueError("A test error occurred"))
         expected_dict_full = {
             'input_path': "data/input_file.csv",
             'output_path': str(Path("results/output_file.jsonl")),
             'rows_processed': 200,
-            'token_usage': {"input_tokens": 15000, "output_tokens": 5000, "total_tokens": 20000},
+            'token_usage': {
+                "input_tokens": 15000,
+                "output_tokens": 5000,
+                "total_tokens": 20000
+            },
             'start_time': start_time.isoformat(),
             'end_time': end_time_present.isoformat(),
             'duration': 45.0,
@@ -249,14 +253,16 @@ class TestProcessingStats:
             rows_processed=50,
             token_usage={"total_tokens": 1000},
             start_time=start_time,
-            end_time=None,     # end_time is None
-            error=None         # error is None
+            end_time=None,  # end_time is None
+            error=None  # error is None
         )
         expected_dict_optional_none = {
             'input_path': "data/another_input.txt",
             'output_path': None,
             'rows_processed': 50,
-            'token_usage': {"total_tokens": 1000},
+            'token_usage': {
+                "total_tokens": 1000
+            },
             'start_time': start_time.isoformat(),
             'end_time': None,
             'duration': None,  # duration will be None as end_time is None
@@ -275,45 +281,84 @@ def test_check_token_limits(sample_df, mock_encoder) -> None:
     Returns:
         None
     """
-    is_under_limit, token_stats = check_token_limits(sample_df,
-                                                     "System prompt",
-                                                     "response", mock_encoder,
-                                                     100)
-    assert is_under_limit is True
-    assert token_stats['total'] > 0  # Original assertion
-    assert 'total' in token_stats, "Token stats should include 'total' key"  # Enhanced assertion
+    # Ensure sample_df has the expected 'response' column and isn't empty
+    assert 'response' in sample_df.columns
+    assert not sample_df.empty
 
-    is_under_limit, _ = check_token_limits(sample_df, "System prompt",
-                                           "response", mock_encoder, 1)
-    assert is_under_limit is False
+    # Mock the logger to prevent TypeError with level comparison
+    mock_logger = MagicMock()
+
+    # Mock the create_token_counter function to return a simple counter
+    def mock_token_counter(row):
+        # Simple token counter that returns 10 tokens per row
+        return 10
+
+    with patch('src.file_processor.logger', mock_logger), \
+         patch('src.file_processor.create_token_counter', return_value=mock_token_counter):
+
+        # Test case 1: Under the token limit
+        is_under_limit, token_stats = check_token_limits(
+            sample_df, "System prompt", "response", mock_encoder, 100)
+
+        assert is_under_limit is True
+        assert token_stats['total'] > 0
+        assert 'total' in token_stats, "Token stats should include 'total' key"
+
+        # Test case 2: Over the token limit
+        is_under_limit, _ = check_token_limits(sample_df, "System prompt",
+                                               "response", mock_encoder, 1)
+
+        assert is_under_limit is False
 
 
 @pytest.mark.parametrize(
     "test_id, df_override, system_prompt_override, response_field_override, token_limit_override, mock_create_token_counter_side_effect, encoder_override, expected_log_message_part",
     [
-        ("invalid_df_type", None, "Valid prompt", "response", 100, None, "default_encoder", "df must be a pandas DataFrame"),
-        ("empty_df", pd.DataFrame(), "Valid prompt", "response", 100, None, "default_encoder", "DataFrame cannot be empty"),
-        ("invalid_system_prompt", "default", "   ", "response", 100, None, "default_encoder", "system_prompt_content must be a non-empty string"),
-        ("invalid_response_field_not_in_df", "default", "Valid prompt", "non_existent_field", 100, None, "default_encoder", "response_field 'non_existent_field' not found"),
-        ("null_response_field", "default", "Valid prompt", None, 100, None, "default_encoder", "response_field must be a non-empty string"),
-        ("empty_string_response_field", "default", "Valid prompt", "   ", 100, None, "default_encoder", "response_field must be a non-empty string"),
-        ("invalid_token_limit_zero", "default", "Valid prompt", "response", 0, None, "default_encoder", "token_limit must be a positive integer"),
-        ("invalid_token_limit_negative", "default", "Valid prompt", "response", -5, None, "default_encoder", "token_limit must be a positive integer"),
-        ("null_encoder", "default", "Valid prompt", "response", 100, None, None, "encoder cannot be None, or tiktoken.Encoding, or a callable."),
-        ("generic_exception_in_try", "default", "Valid prompt", "response", 100, Exception("Test Counter Error"), "default_encoder", "Error checking token limits: Test Counter Error"),
-    ]
-)
-@patch('src.file_processor.create_token_counter') # Patching at the source module where check_token_limits uses it
+        ("invalid_df_type", None, "Valid prompt", "response", 100, None,
+         "default_encoder", "df must be a pandas DataFrame"),
+        ("empty_df", pd.DataFrame(), "Valid prompt", "response", 100, None,
+         "default_encoder", "DataFrame cannot be empty"),
+        ("invalid_system_prompt", "default", "   ", "response", 100, None,
+         "default_encoder",
+         "system_prompt_content must be a non-empty string"),
+        ("invalid_response_field_not_in_df", "default", "Valid prompt",
+         "non_existent_field", 100, None, "default_encoder",
+         "response_field 'non_existent_field' not found"),
+        ("null_response_field", "default", "Valid prompt", None, 100, None,
+         "default_encoder", "response_field must be a non-empty string"),
+        ("empty_string_response_field", "default", "Valid prompt", "   ", 100,
+         None, "default_encoder", "response_field must be a non-empty string"),
+        ("invalid_token_limit_zero", "default", "Valid prompt", "response", 0,
+         None, "default_encoder", "token_limit must be a positive integer"),
+        ("invalid_token_limit_negative", "default", "Valid prompt", "response",
+         -5, None, "default_encoder",
+         "token_limit must be a positive integer"),
+        ("null_encoder", "default", "Valid prompt", "response", 100, None,
+         None, "encoder cannot be None, or tiktoken.Encoding, or a callable."),
+        ("generic_exception_in_try", "default", "Valid prompt", "response",
+         100, Exception("Test Counter Error"), "default_encoder",
+         "Error checking token limits: Test Counter Error"),
+    ])
+@patch('src.file_processor.create_token_counter'
+       )  # Patching at the source module where check_token_limits uses it
 def test_check_token_limits_error_paths_no_raise(
-    mock_create_token_counter, # Order matters: patch mocks come first
-    test_id, df_override, system_prompt_override,
-    response_field_override, token_limit_override,
-    mock_create_token_counter_side_effect, encoder_override, expected_log_message_part, # Added encoder_override
-    sample_df, mock_encoder, caplog # Fixtures last
+        mock_create_token_counter,  # Order matters: patch mocks come first
+        test_id,
+        df_override,
+        system_prompt_override,
+        response_field_override,
+        token_limit_override,
+        mock_create_token_counter_side_effect,
+        encoder_override,
+        expected_log_message_part,  # Added encoder_override
+        sample_df,
+        mock_encoder,
+        caplog  # Fixtures last
 ):
     """Test error paths in check_token_limits when raise_on_error is False."""
     # Default valid inputs, to be overridden by params
-    current_df = sample_df if isinstance(df_override, str) and df_override == "default" else df_override
+    current_df = sample_df if isinstance(
+        df_override, str) and df_override == "default" else df_override
     current_system_prompt = "Valid System Prompt" if system_prompt_override == "default" else system_prompt_override
     current_response_field = "response" if response_field_override == "default" else response_field_override
     current_token_limit = 1000 if token_limit_override == "default" else token_limit_override
@@ -324,7 +369,7 @@ def test_check_token_limits_error_paths_no_raise(
     else:
         # Default mock behavior for create_token_counter if not testing its failure
         mock_tc_instance = MagicMock()
-        mock_tc_instance.return_value = 5 # Dummy token count per row
+        mock_tc_instance.return_value = 5  # Dummy token count per row
         mock_create_token_counter.return_value = mock_tc_instance
 
     is_under_limit, token_stats = check_token_limits(
@@ -333,8 +378,7 @@ def test_check_token_limits_error_paths_no_raise(
         response_field=current_response_field,
         encoder=current_encoder,
         token_limit=current_token_limit,
-        raise_on_error=False
-    )
+        raise_on_error=False)
 
     assert is_under_limit is False
     assert token_stats == {}
@@ -346,124 +390,58 @@ def test_check_token_limits_error_paths_no_raise(
     [
         # Test cases will be added here
         # (test_id, df_override, system_prompt, response_field, token_limit, create_token_counter_side_effect, encoder, expected_exception, expected_error_message)
-        (
-            "invalid_df_type",
-            "not_a_dataframe",
-            "Valid prompt",
-            "response",
-            100,
-            None,
-            'mock_encoder_val',
-            TypeError,
-            "df must be a pandas DataFrame"
-        ),
-        (
-            "empty_df",
-            pd.DataFrame(),
-            "Valid prompt",
-            "response",
-            100,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "DataFrame cannot be empty"
-        ),
-        (
-            "null_system_prompt",
-            'sample_df_val',
-            None,
-            "response",
-            100,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "system_prompt_content must be a non-empty string"
-        ),
-        (
-            "empty_string_system_prompt",
-            'sample_df_val',
-            "   ",
-            "response",
-            100,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "system_prompt_content must be a non-empty string"
-        ),
-        (
-            "null_response_field",
-            'sample_df_val',
-            "Valid prompt",
-            None,
-            100,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "response_field must be a non-empty string"
-        ),
-        (
-            "empty_string_response_field",
-            'sample_df_val',
-            "Valid prompt",
-            "   ",
-            100,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "response_field must be a non-empty string"
-        ),
-        (
-            "response_field_not_in_columns",
-            'sample_df_val',
-            "Valid prompt",
-            "non_existent_field",
-            100,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "not found in DataFrame columns"
-        ),
-        (
-            "zero_token_limit",
-            'sample_df_val',
-            "Valid prompt",
-            "response",
-            0,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "token_limit must be a positive integer"
-        ),
-        (
-            "negative_token_limit",
-            'sample_df_val',
-            "Valid prompt",
-            "response",
-            -10,
-            None,
-            'mock_encoder_val',
-            ValueError,
-            "token_limit must be a positive integer"
-        ),
+        ("invalid_df_type", "not_a_dataframe", "Valid prompt", "response", 100,
+         None, 'mock_encoder_val', TypeError, "df must be a pandas DataFrame"),
+        ("empty_df", pd.DataFrame(), "Valid prompt", "response", 100, None,
+         'mock_encoder_val', ValueError, "DataFrame cannot be empty"),
+        ("null_system_prompt", 'sample_df_val', None, "response", 100, None,
+         'mock_encoder_val', ValueError,
+         "system_prompt_content must be a non-empty string"),
+        ("empty_string_system_prompt", 'sample_df_val', "   ", "response", 100,
+         None, 'mock_encoder_val', ValueError,
+         "system_prompt_content must be a non-empty string"),
+        ("null_response_field", 'sample_df_val', "Valid prompt", None, 100,
+         None, 'mock_encoder_val', ValueError,
+         "response_field must be a non-empty string"),
+        ("empty_string_response_field", 'sample_df_val', "Valid prompt", "   ",
+         100, None, 'mock_encoder_val', ValueError,
+         "response_field must be a non-empty string"),
+        ("response_field_not_in_columns", 'sample_df_val', "Valid prompt",
+         "non_existent_field", 100, None, 'mock_encoder_val', ValueError,
+         "not found in DataFrame columns"),
+        ("zero_token_limit", 'sample_df_val', "Valid prompt", "response", 0,
+         None, 'mock_encoder_val', ValueError,
+         "token_limit must be a positive integer"),
+        ("negative_token_limit", 'sample_df_val', "Valid prompt", "response",
+         -10, None, 'mock_encoder_val', ValueError,
+         "token_limit must be a positive integer"),
         (
             "null_encoder",
             'sample_df_val',
             "Valid prompt",
             "response",
             100,
-            ValueError("Simulated error from create_token_counter for null encoder test path"), #This side effect won't be hit due to earlier check
-            None, # Actual None encoder
+            ValueError(
+                "Simulated error from create_token_counter for null encoder test path"
+            ),  #This side effect won't be hit due to earlier check
+            None,  # Actual None encoder
             ValueError,
-            "encoder cannot be None, or tiktoken.Encoding, or a callable"
-        ),
+            "encoder cannot be None, or tiktoken.Encoding, or a callable"),
     ])
-@patch('src.file_processor.create_token_counter') # Keep this patch
+@patch('src.file_processor.create_token_counter')  # Keep this patch
 def test_check_token_limits_error_paths_raise_error(
-    mock_create_token_counter, # Order matters: patch mocks come first
-    test_id, df_override, system_prompt_override,
-    response_field_override, token_limit_override,
-    mock_create_token_counter_side_effect, encoder_override, expected_exception, expected_error_message_part,
-    sample_df, mock_encoder # Fixtures last
+        mock_create_token_counter,  # Order matters: patch mocks come first
+        test_id,
+        df_override,
+        system_prompt_override,
+        response_field_override,
+        token_limit_override,
+        mock_create_token_counter_side_effect,
+        encoder_override,
+        expected_exception,
+        expected_error_message_part,
+        sample_df,
+        mock_encoder  # Fixtures last
 ):
     """Test error paths in check_token_limits when raise_on_error is True."""
     # Configure the mock for create_token_counter if a side effect is specified
@@ -479,20 +457,19 @@ def test_check_token_limits_error_paths_raise_error(
     else:
         current_df = df_override
 
-    if isinstance(encoder_override, str) and encoder_override == 'mock_encoder_val':
+    if isinstance(encoder_override,
+                  str) and encoder_override == 'mock_encoder_val':
         current_encoder = mock_encoder
     else:
         current_encoder = encoder_override
 
     with pytest.raises(expected_exception) as excinfo:
-        check_token_limits(
-            df=current_df,
-            system_prompt_content=system_prompt_override,
-            response_field=response_field_override,
-            encoder=current_encoder,
-            token_limit=token_limit_override,
-            raise_on_error=True
-        )
+        check_token_limits(df=current_df,
+                           system_prompt_content=system_prompt_override,
+                           response_field=response_field_override,
+                           encoder=current_encoder,
+                           token_limit=token_limit_override,
+                           raise_on_error=True)
     assert expected_error_message_part.lower() in str(excinfo.value).lower()
 
 
@@ -715,7 +692,7 @@ def test_continue_on_chunk_failure(mocker, temp_test_dir_fp,
                 f"MOCK: Created result DataFrame with {len(result_df)} rows and columns: {result_df.columns.tolist()}"
             )
             return result_df
-            
+
     mocker.patch('src.file_processor.LLMClient', side_effect=MockLLMClient)
     # Mock the logger used inside file_processor module if it's not passed via config
     mocker.patch('src.file_processor.logger', mock_logger_main)
@@ -916,7 +893,8 @@ def test_process_file_common_edge_cases(mocker, temp_test_dir_fp):
 
     # mock_check_limits is already patched from previous scenario, configure its return for this one
     # We need a new mock for check_token_limits for this scenario to avoid using the one from scenario 3
-    mock_check_limits_s4 = mocker.patch('src.file_processor.check_token_limits')
+    mock_check_limits_s4 = mocker.patch(
+        'src.file_processor.check_token_limits')
     mock_check_limits_s4.return_value = (True, {
         'total': 50,
         'max': 5,
@@ -1021,7 +999,8 @@ def test_execute_single_batch_job_task_edge_cases(mocker):
                    status="pending")
     result = _execute_single_batch_job_task(job)
     assert result.status == "error"
-    assert result.error_message is not None and "Chunk DataFrame is None or empty" in str(result.error_message)
+    assert result.error_message is not None and "Chunk DataFrame is None or empty" in str(
+        result.error_message)
 
     # Test LLMClient creation failure
     job = BatchJob(chunk_id_str="test",
@@ -1035,7 +1014,8 @@ def test_execute_single_batch_job_task_edge_cases(mocker):
     mock_llm.side_effect = Exception("Test error")
     result = _execute_single_batch_job_task(job)
     assert result.status == "error"
-    assert result.error_message is not None and "Failed to create LLMClient" in str(result.error_message)
+    assert result.error_message is not None and "Failed to create LLMClient" in str(
+        result.error_message)
 
 
 def test_process_completed_future_edge_cases(mocker):
@@ -1070,7 +1050,8 @@ def test_process_completed_future_edge_cases(mocker):
         llm_output_column_name="response")
     assert should_halt
     assert job.status == "error"
-    assert job.error_message is not None and "Test error" in str(job.error_message)
+    assert job.error_message is not None and "Test error" in str(
+        job.error_message)
 
     # Test non-DataFrame result
     future.result.side_effect = None
@@ -1089,7 +1070,8 @@ def test_process_completed_future_edge_cases(mocker):
         llm_output_column_name="response")
     assert not should_halt
     assert job.status == "error"
-    assert job.error_message is not None and "not DataFrame" in str(job.error_message)
+    assert job.error_message is not None and "not DataFrame" in str(
+        job.error_message)
 
 
 def test_aggregate_and_cleanup_edge_cases(mocker):
@@ -1172,7 +1154,8 @@ def test_process_file_concurrently_edge_cases(mocker, temp_test_dir_fp):
     mock_path.return_value = mock_path_instance
 
     # Test no jobs generated
-    mock_generate = mocker.patch('src.file_processor._generate_chunk_job_objects')
+    mock_generate = mocker.patch(
+        'src.file_processor._generate_chunk_job_objects')
     mock_generate.return_value = []
     result = process_file_concurrently(filepath=str(
         temp_test_dir_fp["input_data"] / "test.csv"),

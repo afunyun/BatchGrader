@@ -51,12 +51,17 @@ def test_force_chunk_count_splits_evenly(cleanup_output):
     df = pd.DataFrame({'text': [f"row {i}" for i in range(10)]})
     tmp = os.path.join(TEST_OUTPUT_DIR, 'force_chunk.csv')
     df.to_csv(tmp, index=False)
-    files, tokens = split_file_by_token_limit(
-        tmp,
-        token_limit=100,
-        count_tokens_fn=dummy_token_counter,
-        force_chunk_count=3,
-        output_dir=TEST_OUTPUT_DIR)
+    
+    # Create a mock logger that won't cause TypeError with level comparison
+    mock_logger = MagicMock()
+    
+    with patch('src.input_splitter.logger', mock_logger):
+        files, tokens = split_file_by_token_limit(
+            tmp,
+            token_limit=100,
+            count_tokens_fn=dummy_token_counter,
+            force_chunk_count=3,
+            output_dir=TEST_OUTPUT_DIR)
     assert len(files) == 3
     total_rows = sum(pd.read_csv(f).shape[0] for f in files)
     assert total_rows == 10
@@ -66,11 +71,16 @@ def test_token_chunking_respects_limit(cleanup_output):
     df = pd.DataFrame({'text': ['a' * 10] * 12})
     tmp = os.path.join(TEST_OUTPUT_DIR, 'tokchunk.csv')
     df.to_csv(tmp, index=False)
-    files, tokens = split_file_by_token_limit(
-        tmp,
-        token_limit=30,
-        count_tokens_fn=dummy_token_counter,
-        output_dir=TEST_OUTPUT_DIR)
+    
+    # Create a mock logger that won't cause TypeError with level comparison
+    mock_logger = MagicMock()
+    
+    with patch('src.input_splitter.logger', mock_logger):
+        files, tokens = split_file_by_token_limit(
+            tmp,
+            token_limit=30,
+            count_tokens_fn=dummy_token_counter,
+            output_dir=TEST_OUTPUT_DIR)
     for t in tokens:
         assert t <= 30
     all_rows = sum(pd.read_csv(f).shape[0] for f in files)

@@ -133,7 +133,12 @@ def test_load_system_prompt_missing_config_key():
 def test_load_prompts_file_not_found(tmp_path):
     """Test that FileNotFoundError is raised when prompts file doesn't exist."""
     nonexistent_file = tmp_path / "nonexistent.yaml"
-    with pytest.raises(FileNotFoundError) as excinfo:
+    
+    # Mock the logger to prevent TypeError with level comparison
+    mock_logger = MagicMock()
+    
+    with patch('src.prompt_utils.logger', mock_logger), \
+         pytest.raises(FileNotFoundError) as excinfo:
         load_prompts(nonexistent_file)
     assert f"Prompts file not found: {nonexistent_file}" in str(excinfo.value)
 
@@ -142,7 +147,12 @@ def test_load_prompts_invalid_yaml(tmp_path):
     """Test that YAMLError is raised when prompts file has invalid YAML."""
     invalid_yaml = tmp_path / "invalid.yaml"
     invalid_yaml.write_text("invalid: yaml: content: [missing bracket")
-    with pytest.raises(yaml.YAMLError):
+    
+    # Mock the logger to prevent TypeError with level comparison
+    mock_logger = MagicMock()
+    
+    with patch('src.prompt_utils.logger', mock_logger), \
+         pytest.raises(yaml.YAMLError):
         load_prompts(invalid_yaml)
 
 
@@ -150,7 +160,12 @@ def test_load_prompts_invalid_format(tmp_path):
     """Test that YAMLError is raised when prompts file doesn't contain a dictionary."""
     invalid_format = tmp_path / "invalid_format.yaml"
     invalid_format.write_text("- this\n- is\n- a\n- list")
-    with pytest.raises(yaml.YAMLError) as excinfo:
+    
+    # Mock the logger to prevent TypeError with level comparison
+    mock_logger = MagicMock()
+    
+    with patch('src.prompt_utils.logger', mock_logger), \
+         pytest.raises(yaml.YAMLError) as excinfo:
         load_prompts(invalid_format)
     assert "Expected a dictionary" in str(excinfo.value)
 
@@ -163,7 +178,12 @@ def test_load_prompts_success(tmp_path):
         "prompt2": "This is prompt 2"
     }
     valid_yaml.write_text(yaml.dump(expected_prompts))
-    loaded_prompts = load_prompts(valid_yaml)
+    
+    # Mock the logger to prevent TypeError with level comparison
+    mock_logger = MagicMock()
+    
+    with patch('src.prompt_utils.logger', mock_logger):
+        loaded_prompts = load_prompts(valid_yaml)
     assert loaded_prompts == expected_prompts
 
 
@@ -172,7 +192,11 @@ def test_load_prompts_unexpected_error(tmp_path):
     valid_yaml = tmp_path / "valid.yaml"
     valid_yaml.write_text(yaml.dump({"test": "prompt"}))
     
-    with patch('builtins.open', side_effect=Exception("Unexpected error")):
+    # Mock the logger to prevent TypeError with level comparison
+    mock_logger = MagicMock()
+
+    with patch('src.prompt_utils.logger', mock_logger), \
+         patch('builtins.open', side_effect=Exception("Unexpected error")):
         with pytest.raises(Exception) as excinfo:
             load_prompts(valid_yaml)
         assert "Unexpected error" in str(excinfo.value)

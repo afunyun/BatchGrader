@@ -43,18 +43,24 @@ def test_get_encoder_failure(mock_encoding_for_model, caplog):
     # to raise a KeyError. This simulates tiktoken's behavior for an unknown model.
     mock_error_message = "Test key error: Model not found for testing"
     mock_encoding_for_model.side_effect = KeyError(mock_error_message)
+    
+    # Create a mock logger that won't cause TypeError with level comparison
+    mock_logger = MagicMock()
 
     # Call get_encoder with an invalid model name. This should now hit the 'except'
     # block in get_encoder because our mock raises an error.
-    encoder = get_encoder("invalid-model-name-for-testing-12345")
+    with patch('src.utils.logger', mock_logger):
+        encoder = get_encoder("invalid-model-name-for-testing-12345")
 
     # Assert that None is returned on failure
     assert encoder is None
-
-    # Assert that a warning was logged by get_encoder's except block
-    assert "Failed to initialize encoder" in caplog.text
-    # Assert that our specific mocked error message is part of the logged exception text
-    assert mock_error_message in caplog.text
+    
+    # Assert that a warning was logged
+    mock_logger.warning.assert_called_once()
+    # Check the warning message contains our error
+    warning_call_args = mock_logger.warning.call_args[0][0]
+    assert "Failed to initialize encoder" in warning_call_args
+    assert mock_error_message in warning_call_args
 
 
 def test_deep_merge_dicts_basic():
