@@ -8,7 +8,7 @@ This document outlines best practices for maintaining and extending the BatchGra
 
 **NEVER use relative imports (e.g., `from .module import ...`) in this project. All imports must be absolute and resolvable from the project root. Do NOT use `src.*` style imports either.**
 
-**NEVER use os for file access, it will fail**
+## NEVER use os for file access, it will fail
 
 ### Standard Import Order
 

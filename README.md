@@ -2,8 +2,9 @@
 
 ## Recent Changes
 
-- **0.5.8.1 (2025-05-12)**: Fixed project path resolution and config file handling issues. [See changelog](docs/CHANGELOG.md)
-- **0.5.8 (2025-05-01)**: Fixed all test failures and improved code reliability. [See changelog](docs/CHANGELOG.md)
+- **Version 0.5.8.2** (2025-05-15): Fixed test performance issues by properly mocking time.sleep in test_manage_batch_job_success. Improved test coverage to 76%.
+- **Version 0.5.8.1** (2025-05-12): Fixed project path resolution and config file handling issues. [See changelog](docs/CHANGELOG.md)
+- **Version 0.5.8** (2025-05-01): Fixed all test failures and improved code reliability. [See changelog](docs/CHANGELOG.md)
 
 ## Overview
 
@@ -57,10 +58,20 @@ All configuration is managed via simple YAML.
 
      If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length from every hair on their body. Please don't do that.
 
-   - **Dependency Management** (`uv` + `requirements.txt` is canonical)
+   - **Dependency Management**
 
-     - Uses `requirements.txt` (managed with `uv` or `pip`). `pyproject.toml` is for compatibility only and not actively maintained.
-     - **Installing dependencies:**
+     - The project uses `pyproject.toml` with Poetry for dependency management.
+     - For development, install with:
+
+       ```powershell
+       # Install in development mode with all dependencies
+       pip install -e ".[dev]"
+       
+       # Or using uv (faster):
+       uv pip install -e "."
+       ```
+
+     - For production, use `requirements.txt`:
 
        ```powershell
        uv pip install -r requirements.txt

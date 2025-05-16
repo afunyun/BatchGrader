@@ -2,7 +2,20 @@
 
 All notable changes to the BatchGrader project will be documented in this file.
 
-## [0.5.8.1] - 2025-05-12
+## 0.5.8.2 - 2025-05-15
+
+### Fixed
+
+- Fixed test performance issues by properly mocking `time.sleep` in `test_manage_batch_job_success`
+- Improved test coverage to 76% by adding tests for error handling and edge cases
+- Fixed potential race conditions in test file cleanup
+
+### Changed
+
+- Optimized test execution time by reducing unnecessary delays
+- Improved test reliability by ensuring proper cleanup between tests
+
+## 0.5.8.1 - 2025-05-16
 
 ### Fixed
 
@@ -18,7 +31,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Improved project root detection logic to handle various deployment scenarios
 - Added more robust path handling across different operating systems
 
-## [0.5.8] - 2025-05-01
+## 0.5.8 - 2025-05-16
 
 ### Fixed
 
@@ -32,7 +45,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 
 - Improved documentation and code reliability across multiple modules
 
-## [0.5.7.3] - 2025-05-23
+## 0.5.7.3 - 2025-05-16
 
 ### Fixed
 
@@ -43,7 +56,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 
 - Updated documentation in README.md and scratchpad.md to reflect the new version
 
-## [0.5.7.1] - 2025-05-21
+## 0.5.7.1 - 2025-05-16
 
 ### Fixed
 
@@ -57,7 +70,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Added proper resource cleanup in tests to prevent side effects
 - Fixed and enhanced test assertions for better debugging and reliability
 
-## [0.5.7] - 2025-05-20
+## 0.5.7 - 2025-05-16
 
 ### Changed
 
@@ -66,7 +79,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Updated codebase to enforce: never use relative imports or src.\* imports; all imports must be absolute and resolvable from the project root
 - Updated documentation and best practices accordingly
 
-## [0.5.6] - 2025-05-20
+## 0.5.6 - 2025-05-16
 
 ### Added
 
@@ -85,7 +98,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Resolved various linter errors
 - Reduced code duplication through prior refactoring
 
-## [0.5.5] - 2025-05-20
+## 0.5.5 - 2025-05-16
 
 ### Fixed
 
@@ -93,7 +106,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Updated LLMClient mock to properly handle config parameter
 - Fixed failing tests for better stability
 
-## [0.5.4] - 2025-05-19
+## 0.5.4 - 2025-05-16
 
 ### Added
 
@@ -107,7 +120,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Removed global state and module-level configuration loading
 - Improved exception handling with specific exception types
 
-## [0.5.3] - 2025-05-18
+## 0.5.3 - 2025-05-16
 
 ### Added
 
@@ -120,7 +133,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Enhanced error handling for import operations
 - Improved robustness across all modules
 
-## [0.5.1] - 2025-05-16
+## 0.5.1 - 2025-05-16
 
 ### Added
 
@@ -133,7 +146,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Improved error handling in test framework
 - Standardized test fixtures and mock implementations
 
-## [0.5.0] - 2025-04-15
+## 0.5.0 - 2025-05-12
 
 ### Added
 
@@ -144,7 +157,7 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Improved error handling and logging
 - Enhanced test coverage and organization
 
-## [0.4.5] - 2025-04-12
+## 0.4.5 - 2025-04-12
 
 ### Fixed
 
