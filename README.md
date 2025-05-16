@@ -1,6 +1,14 @@
 # BatchGrader: Batch LLM Evaluation with OpenAI Batch API
 
-## Last updated: 2025-05-15
+## Last updated: 2025-05-16
+
+**0.5.1 (2025-05-16):**
+
+- Enhanced test suite reliability with comprehensive tiktoken mocking
+- Added proper logger implementation in input_splitter.py
+- Fixed DataFrame comparison issues in tests for more robust equality checks
+- Improved error handling in test framework
+- Standardized test fixtures and mock implementations
 
 **0.5.0 (2025-05-15):**
 
@@ -18,7 +26,7 @@
 
 **0.4.4 (2025-05-12):**
 
-- delete the batch_runner.py that was in proj root because that only worked locally with a hack & shouldn't have been in the public repo *facepalm*
+- delete the batch*runner.py that was in proj root because that only worked locally with a hack & shouldn't have been in the public repo \_facepalm*
 - update run instructions for clarity for this
 - fix the entire env setup in general as it got ultra screwy while updating things and we push to production it seems
 - fixed import in rich_display
@@ -46,7 +54,7 @@
 
 **0.3.2 (2025-05-11):**
 
-- Now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don’t lose nested settings.
+- Now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don't lose nested settings.
 
 **0.3.1 (2025-05-11):**
 
@@ -86,42 +94,47 @@ All configuration is managed via simple YAML.
 **I am on Windows 11. I have not tested this on linux, but I have no reason to believe it wouldn't work just fine. You may need to modify the setup for bash rather than powershell.**
 
 1. **Prerequisites**
-    - Python 3.7+
-    - Recommended: `uv` (preferred for `requirements.txt`) or `pip`.
+
+   - Python 3.7+
+   - Recommended: `uv` (preferred for `requirements.txt`) or `pip`.
 
 2. **Virtual Environment (Recommended)**
-    - Clone the repo:
 
-        ```powershell
-        git clone https://github.com/afunyun/BatchGrader.git
-        cd BatchGrader
-        ```
+   - Clone the repo:
 
-    - "Optional but not running in a venv is asking for a world of hurt, promise" Sync and activate the virtual environment (exact script may vary based on your system):
+     ```powershell
+     git clone https://github.com/afunyun/BatchGrader.git
+     cd BatchGrader
+     ```
 
-        ```powershell
-        uv sync
-        .venv\Scripts\activate.ps1
-        ```
+   - "Optional but not running in a venv is asking for a world of hurt, promise" Sync and activate the virtual environment (exact script may vary based on your system):
 
-        If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length from every hair on their body. Please don't do that.
-    - **Dependency Management** (`uv` + `requirements.txt` is canonical)
-        - Uses `requirements.txt` (managed with `uv` or `pip`). `pyproject.toml` is for compatibility only and not actively maintained.
-        - **Installing dependencies:**
+     ```powershell
+     uv sync
+     .venv\Scripts\activate.ps1
+     ```
 
-            ```powershell
-            uv pip install -r requirements.txt
-            ```
+     If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length from every hair on their body. Please don't do that.
+
+   - **Dependency Management** (`uv` + `requirements.txt` is canonical)
+
+     - Uses `requirements.txt` (managed with `uv` or `pip`). `pyproject.toml` is for compatibility only and not actively maintained.
+     - **Installing dependencies:**
+
+       ```powershell
+       uv pip install -r requirements.txt
+       ```
 
 3. **Usage**
-    - Always make sure your `.venv` is active—if it's not, something *will* break, almost guaranteed.
-    - Rename `config/config.yaml.example` to `config/config.yaml` and fill in the values.
-      (If you get a config loading error, check that these files are in the expected `/config` location.)
-    - Then run:
 
-        ```powershell
-        python -m src.batch_runner [args]
-        ```
+   - Always make sure your `.venv` is active—if it's not, something _will_ break, almost guaranteed.
+   - Rename `config/config.yaml.example` to `config/config.yaml` and fill in the values.
+     (If you get a config loading error, check that these files are in the expected `/config` location.)
+   - Then run:
+
+     ```powershell
+     python -m src.batch_runner [args]
+     ```
 
 This of course is just to run the batch runner with nothing else. See below for more advanced usage.
 
@@ -225,11 +238,13 @@ If neither `--count-tokens` nor `--split-tokens` is specified, the system runs t
 ---
 
 1. **Prepare Input Data:**
+
    - Place your input files (CSV, JSON, or JSONL) in the `input/` directory.
    - Ensure your files contain the field specified by `response_field` in `config.yaml`.
    - Optionally, if you need to provide examples in the prompts, you may add examples.
 
 2. **Run the Batch Grader:**
+
    - Make sure you are in the BatchGrader directory.
 
    ```bash
@@ -270,6 +285,7 @@ token_limit: 2_000_000 #change to whatever your limit is
   The OpenAI docs I've provided are obviously static. I pulled them from the site on 5/10/2025; if it's any time after that, it may be horribly out of date. I recommend checking the link above.
 
 **Pricing as of 2025-05-10. Verify with OpenAI or docs/pricing.csv (update manually as needed).**
+
 <details>  
 <table>
   <thead>
