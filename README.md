@@ -39,39 +39,6 @@
 - fix the entire env setup in general as it got ultra screwy while updating things and we push to production it seems
 - fixed import in rich_display
 
-**0.4.3 (2025-05-12):**
-
-- Fixed pytest.ini_options not being read by pytest.
-
-**0.4.2 (2025-05-12):**
-
-- Fixed asyncio_default_fixture_loop_scope not being read by pytest.
-
-**0.4.1 (2025-05-11):**
-
-- Fixed tests returning None for vars and not knowing what dir they were in, that was rough.
-
-**0.4.0 (2025-05-11):**
-
-- Tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
-- No evidence of logger state being manually manipulated so no issues there.
-
-**0.3.3 (2025-05-11):**
-
-- Import Cleanup & CLI Table Fixes: nuked unused imports, pointed all test outputs properly at tests/output/, and swapped prints to console for RichJobTable live-updating wobbly progress bar. Forgot to give a version number so it gets a fake one 0.3.3.
-
-**0.3.2 (2025-05-11):**
-
-- Now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don't lose nested settings.
-
-**0.3.1 (2025-05-11):**
-
-- Chunking finally works and storage paths have been cleaned.
-
-**0.3.0 (2025-05-11):**
-
-- Ditched raw prints for rich console output with colors & emoji, added a summary table for jobs/tokens/cost, and beefed up logging.
-
 ## Overview
 
 BatchGrader is a quick and dirty tool for batch evaluation of text data using the OpenAI Batch API. It is designed for grading, scoring, or classifying large sets of LLM-generated responses or any text data.
