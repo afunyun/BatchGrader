@@ -29,6 +29,9 @@ from config_loader import load_config
 config = load_config()
 from datetime import datetime
 from typing import Optional, List, Dict, TextIO
+import logging
+
+logger = logging.getLogger(__name__)
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'token_usage_log.json')
 EVENT_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output', 'token_usage_events.jsonl')
@@ -48,7 +51,7 @@ def _load_pricing() -> Dict[str, Dict[str, float]]:
     if not os.path.exists(PRICING_CSV_PATH):
         raise FileNotFoundError(f"Pricing file not found: {PRICING_CSV_PATH}")
     pricing = {}
-    with open(PRICING_CSV_PATH, 'r', encoding='utf-8') as f: # type: TextIO
+    with open(PRICING_CSV_PATH, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f) # type: ignore
         for row in reader:
             model = row['Model']

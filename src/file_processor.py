@@ -671,30 +671,30 @@ def _pfc_process_completed_future(
             if halt_on_failure_flag:
                 logger.error(f"[HALT] {job_from_future.status.capitalize()} detected in chunk {job_from_future.chunk_id_str}. Halting processing for {Path(original_filepath).name}.")
                 if live_display: live_display.update(rich_job_table.build_table(all_jobs_list)) 
-                return True 
+                return True
 
-            error_custom_id = None
-            if isinstance(job_from_future.error_details, dict): 
-                error_custom_id = job_from_future.error_details.get('custom_id', job_from_future.error_details.get('custom_id_of_failed_item'))
-            
-            if error_custom_id is None and job_from_future.chunk_df is not None and 'custom_id' in job_from_future.chunk_df.columns:
-                error_custom_id = job_from_future.chunk_id_str 
-            elif error_custom_id is None: 
-                error_custom_id = job_from_future.chunk_id_str
+        error_custom_id = None
+        if isinstance(job_from_future.error_details, dict): 
+            error_custom_id = job_from_future.error_details.get('custom_id', job_from_future.error_details.get('custom_id_of_failed_item'))
+        
+        if error_custom_id is None and job_from_future.chunk_df is not None and 'custom_id' in job_from_future.chunk_df.columns:
+            error_custom_id = job_from_future.chunk_id_str 
+        elif error_custom_id is None: 
+            error_custom_id = job_from_future.chunk_id_str
 
-            error_df_data = {
-                'custom_id': error_custom_id, 
-                llm_output_column_name: f"ERROR: {job_from_future.error_message}",
-                'error_type': job_from_future.status.capitalize() + 'Error', 
-                'original_file': original_filepath,
-                'chunk_id': job_from_future.chunk_id_str
-            }
-            if job_from_future.error_details: 
-                 error_df_data['error_details'] = str(job_from_future.error_details) 
+        error_df_data = {
+            'custom_id': error_custom_id, 
+            llm_output_column_name: f"ERROR: {job_from_future.error_message}",
+            'error_type': job_from_future.status.capitalize() + 'Error', 
+            'original_file': original_filepath,
+            'chunk_id': job_from_future.chunk_id_str
+        }
+        if job_from_future.error_details: 
+             error_df_data['error_details'] = str(job_from_future.error_details) 
 
-            job_from_future.result_data = pd.DataFrame([error_df_data])
-            completed_jobs_list.append(job_from_future) 
-            logger.warning(f"Chunk {job_from_future.chunk_id_str} {job_from_future.status}, but continuing. Error info DataFrame created and added to results.")
+        job_from_future.result_data = pd.DataFrame([error_df_data])
+        completed_jobs_list.append(job_from_future) 
+        logger.warning(f"Chunk {job_from_future.chunk_id_str} {job_from_future.status}, but continuing. Error info DataFrame created and added to results.")
 
     except Exception as e: 
         job_from_future.status = "error" 
@@ -847,7 +847,7 @@ def process_file_concurrently(
                             logger.debug(f"Marked job {job_to_cancel.chunk_id_str} as cancelled.")
                 if cancelled_count > 0:
                     logger.warning(f"Cancelled {cancelled_count} pending chunk jobs for {original_file_path.name} due to halt on failure.")
-                live.update(rich_job_table.build_table(jobs)) 
+                live.update(rich_table.build_table(jobs)) 
         
         logger.info(f"All futures processed for {original_file_path.name}. Aggregating results...")
         final_df = _pfc_aggregate_and_cleanup(completed_jobs, filepath, response_field) 

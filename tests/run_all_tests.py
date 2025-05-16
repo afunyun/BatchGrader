@@ -71,6 +71,24 @@ test_cases = [
         ],
     },
 ]
+
+invalid_config_cases = [
+    {
+        'name': 'Missing Required Fields',
+        'input': 'tests/input/small_legacy.csv',
+        'config': 'tests/config/invalid_missing_required.yaml',
+        'expect_error': True,
+        'expected_log_msgs': ['Missing required config fields']
+    },
+    {
+        'name': 'Invalid Output Format',
+        'input': 'tests/input/small_legacy.csv',
+        'config': 'tests/config/invalid_output_format.yaml',
+        'expect_error': True,
+        'expected_log_msgs': ['Invalid output_format']
+    }
+]
+
 def get_latest_log():
     logs = sorted(glob.glob('output/logs/batchgrader_run_*.log'), key=os.path.getmtime, reverse=True)
     return logs[0] if logs else None
