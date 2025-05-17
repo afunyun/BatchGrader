@@ -2,6 +2,22 @@
 
 All notable changes to the BatchGrader project will be documented in this file.
 
+## 0.6.1.0 - 2025-05-17
+
+### Added
+
+- Implemented a reprocessing feature to allow re-running failed items from a previous batch job.
+  - Includes new CLI arguments: `--reprocess-from`, `--reprocess-input-file`, and `--original-input-id-column`.
+  - Output files for reprocessing runs are suffixed with `_reprocessed`.
+- Integrated an automatic retry mechanism for OpenAI API calls using the `tenacity` library.
+  - Configurable retry settings (`max_retries`, `initial_backoff_seconds`, `max_backoff_seconds`) via `config.yaml`.
+  - Retries common API errors like `APIConnectionError`, `RateLimitError`, `APITimeoutError`, and server-side `APIStatusError`s.
+
+### Changed
+
+- Updated `docs/scratchpad.md` with detailed documentation for the new reprocessing and retry features.
+- Bumped project version to `0.6.1.0`.
+
 ## 0.6.0.3 - 2025-05-17
 
 - Core batch processing and evaluation functionality is robust, with 86%+ test coverage.
