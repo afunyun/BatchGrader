@@ -88,7 +88,7 @@ def mock_openai_batch(monkeypatch):
 
         def content(self, file_id):
             if file_id == "malformed_file_id":
-                raise Exception("Malformed file ID")
+                raise ValueError("Malformed file ID")
             valid_jsonl = (
                 '{"custom_id": "1", "response": {"status_code": 200, "body": {"choices": [{"message": {"content": "MOCKED_RESPONSE"}}]}}}\n'
                 '{"custom_id": "2", "error": {"code": "invalid_request", "message": "Malformed request"}}\n'

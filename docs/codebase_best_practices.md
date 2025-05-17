@@ -44,14 +44,14 @@ from src.token_tracker import log_token_usage_event
 - Prefer importing specific types rather than the entire module
 - For larger type collections, use multiple lines with appropriate alignment
 
-```python
-# Good: Specific imports, grouped logically
+## Good: Specific imports, grouped logically
+
 from typing import Any, Dict, List, Optional, Union
 from typing import Callable, TypeVar
 
-# Avoid: Importing entire modules when only specific types are needed
+## Avoid: Importing entire modules when only specific types are needed
+
 import typing  # Not recommended unless you need many types
-```
 
 ## 2. Preventing Circular Dependencies
 
@@ -96,7 +96,7 @@ def function_using_optional_feature():
         logger.warning("Optional feature unavailable: optional_package not installed")
         return fallback_behavior()
 
-    # Use optional_package here
+
 ```
 
 ## 4. Module Organization
