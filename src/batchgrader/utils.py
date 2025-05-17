@@ -1,49 +1,57 @@
 """
-utils.py - Shared utilities for BatchGrader
+Utility functions for BatchGrader.
 
-Includes:
-- deep_merge_dicts: Recursively merge two dictionaries (for config merging)
-- ensure_config_files_exist: Creates default config.yaml and prompts.yaml from examples if they don't exist.
+This module provides various utility functions used throughout the BatchGrader application.
 """
 
-import logging
 import os
 import shutil
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Dict, Any
 
 import tiktoken
+from loguru import logger
 
-from batchgrader.constants import PROJECT_ROOT
+# Import PROJECT_ROOT from constants if available
+try:
+    from ..constants import PROJECT_ROOT
+except ImportError:
+    # Fallback if constants.py is not available
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-logger = logging.getLogger(__name__)
 
-
-def deep_merge_dicts(a, b):
+def deep_merge_dicts(dict_a: Dict[Any, Any], dict_b: Dict[Any, Any]) -> Dict[Any, Any]:
     """
-    Recursively merge dict b into dict a and return the result.
-    Values from b take precedence over a.
+    Recursively merge dict_b into dict_a and return the result.
+    Values from dict_b take precedence over dict_a.
+    
+    Args:
+        dict_a: The base dictionary to merge into
+        dict_b: The dictionary to merge from (takes precedence)
+        
+    Returns:
+        A new dictionary with values from both dictionaries merged
     """
-    if not isinstance(a, dict):
-        return b
-    result = a.copy()
-    for k, v in b.items():
-        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
-            result[k] = deep_merge_dicts(result[k], v)
+    if not isinstance(dict_a, dict):
+        return dict_b
+    result = dict_a.copy()
+    for key, value in dict_b.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge_dicts(result[key], value)
         else:
-            result[k] = v
+            result[key] = value
     return result
 
 
-def ensure_config_files_exist(logger):
+def ensure_config_files_exist(log) -> None:
     """
     Checks for config.yaml and prompts.yaml in the config directory.
     If they don't exist, it copies them from their respective .example files.
 
     Args:
-        logger: An instance of the application's logger.
+        log: An instance of the application's logger.
     """
     try:
-        # Use the PROJECT_ROOT from constants to ensure consistent project structure
         config_dir = PROJECT_ROOT / "config"
 
         files_to_check = {
@@ -51,30 +59,29 @@ def ensure_config_files_exist(logger):
             "prompts.yaml": "prompts.yaml.example",
         }
 
-        os.makedirs(str(config_dir), exist_ok=True)
+        os.makedirs(config_dir, exist_ok=True)
 
         for dest_file, src_example_file in files_to_check.items():
             dest_path = config_dir / dest_file
             src_example_path = config_dir / src_example_file
 
             if dest_path.exists():
-                logger.debug(f"'{dest_path}' already exists. No action taken.")
-
-            elif src_example_path.exists():
-                shutil.copy2(src_example_path, dest_path)
-                logger.info(
-                    f"'{dest_path}' not found. Copied from '{src_example_path}'."
-                )
+                log.debug("'%s' already exists. No action taken.", dest_path)
             else:
-                logger.warning(
-                    f"'{dest_path}' not found, and example file '{src_example_path}' also missing. Cannot create default configuration."
-                )
-    except Exception as e:
-        logger.error(f"Error ensuring config files exist: {e}", exc_info=True)
+                if src_example_path.exists():
+                    shutil.copy2(src_example_path, dest_path)
+                    log.info("'%s' not found. Copied from '%s'.", dest_path, src_example_path)
+                else:
+                    log.warning(
+                        "'%s' not found, and example file '%s' also missing. "
+                        "Cannot create default configuration.",
+                        dest_path, src_example_path
+                    )
+    except (OSError, IOError) as error:
+        log.error("File system error while ensuring config files exist: %s", error)
 
 
-def get_encoder(
-        model_name: Optional[str] = None) -> Optional[tiktoken.Encoding]:
+def get_encoder(model_name: Optional[str] = None) -> Optional[tiktoken.Encoding]:
     """
     Get a tiktoken encoder for the specified model or a default one.
 
@@ -89,11 +96,9 @@ def get_encoder(
         across the codebase. It handles errors gracefully and logs warnings.
     """
     try:
-        return (
-            tiktoken.encoding_for_model(model_name)
-            if model_name
-            else tiktoken.get_encoding("cl100k_base")
-        )
-    except Exception as e:
-        logger.warning(f"Failed to initialize encoder: {e}")
+        if model_name:
+            return tiktoken.encoding_for_model(model_name)
+        return tiktoken.get_encoding("cl100k_base")
+    except Exception as error:
+        logger.warning("Failed to initialize encoder: %s", error)
         return None

@@ -1,14 +1,20 @@
+"""
+Configuration loader for BatchGrader.
+
+This module handles loading and managing configuration settings from YAML files,
+merging them with default values, and ensuring necessary directories and files exist.
+"""
+
 import logging
 import os
 from pathlib import Path
+from typing import Any, Dict, Optional, Union
 
 import yaml
 
 from batchgrader.constants import PROJECT_ROOT
-from batchgrader.utils import (
-    deep_merge_dicts, )
-from batchgrader.utils import (
-    ensure_config_files_exist as util_ensure_config_files_exist, )
+from batchgrader.utils import deep_merge_dicts
+from batchgrader.utils import ensure_config_files_exist
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +35,8 @@ DEFAULT_CONFIG = {
     # TESTING Number of parallel batch jobs per input file (concurrent chunk processing)
     2,
     "force_chunk_count":
-    # TESTING If >1, forcibly split input into this many chunks regardless of token limits (for speed)
+    # TESTING If >1, forcibly split input into this many chunks
+    # regardless of token limits (for speed)
     0,
     "halt_on_chunk_failure":
     True,  # TESTING If True, aborts remaining chunks for a file if any chunk fails critically
@@ -111,24 +118,32 @@ def is_examples_file_default(examples_path):
     Checks if the examples file contains only the default text (i.e., not customized by the user).
     """
     try:
-        with open(examples_path, "r", encoding="utf-8") as f:
-            content = f.read().strip()
+        with open(examples_path, "r", encoding="utf-8") as file_handle:
+            content = file_handle.read().strip()
         return content == DEFAULT_EXAMPLES_TEXT
-    except Exception:
+    except (IOError, OSError):
         return True
 
 
 def load_config(config_path=None):
     """
     Loads the batch grading configuration from the specified config YAML file.
-    If config_path is None, loads from config/config.yaml.
-    Auto-creates config, prompts, & examples files with defaults if missing.
-    Prefers environment variable for API key since that's secure.
-    Performs a DEEP MERGE of user config over DEFAULT_CONFIG, so nested dictionaries are merged recursively (not overwritten).
+
+    If config_path is None, loads from config/config.yaml. Auto-creates config,
+    prompts, & examples files with defaults if missing. Prefers environment
+    variable for API key since that's secure. Performs a DEEP MERGE of user
+    config over DEFAULT_CONFIG, so nested dictionaries are merged recursively
+    (not overwritten).
+
+    Args:
+        config_path: Path to the config file. If None, uses default location.
+
     Returns:
         dict: Configuration parameters.
-    Raises RuntimeError if it encounters a badly formatted config file.
-    Raises ValueError if it encounters a missing config file.
+
+    Raises:
+        RuntimeError: If the config file is badly formatted or cannot be read.
+        ValueError: If the config file is not found.
     """
     ensure_config_files(logger)
 
@@ -136,8 +151,8 @@ def load_config(config_path=None):
     if not config_path.exists():
         raise ValueError(f"Config file not found: {config_path}")
     try:
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            config = yaml.safe_load(config_file)
         if config is None:
             config = DEFAULT_CONFIG.copy()
         else:
@@ -145,9 +160,14 @@ def load_config(config_path=None):
             config = merged
             config.get("llm_score_column_name", "llm_score")
 
-    except Exception as e:
+    except yaml.YAMLError as yaml_error:
         raise RuntimeError(
-            f"Error loading config file {config_path}: {e}") from e
+            f"Error parsing YAML in config file {config_path}: {yaml_error}"
+        ) from yaml_error
+    except OSError as io_error:
+        raise RuntimeError(
+            f"I/O error reading config file {config_path}: {io_error}"
+        ) from io_error
     if env_api_key := os.getenv("OPENAI_API_KEY"):
         config["openai_api_key"] = env_api_key
     return config

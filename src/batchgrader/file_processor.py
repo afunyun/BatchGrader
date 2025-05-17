@@ -104,18 +104,16 @@ class ProcessingStats:
         }
 
 
-def _handle_dataframe_error(
-    error_msg: str, raise_on_error: bool, logger_instance: logging.Logger
-):
+def _handle_dataframe_error(error_msg: str, raise_on_error: bool,
+                            logger_instance: logging.Logger):
     logger_instance.error(error_msg)
     if raise_on_error:
         raise ValueError(error_msg)
     return False, {}
 
 
-def _handle_validation_error(
-    error_msg: str, raise_on_error: bool, logger_instance: logging.Logger
-):
+def _handle_validation_error(error_msg: str, raise_on_error: bool,
+                             logger_instance: logging.Logger):
     logger_instance.error(error_msg)
     if raise_on_error:
         raise ValueError(error_msg)
@@ -165,13 +163,13 @@ def check_token_limits(
 
         if df.empty:
             return _handle_dataframe_error(
-                "DataFrame cannot be empty", raise_on_error, logger
+                "DataFrame cannot be empty",
+                raise_on_error,
+                logger,
             )
 
-        if (
-            not isinstance(system_prompt_content, str)
-            or not system_prompt_content.strip()
-        ):
+        if (not isinstance(system_prompt_content, str)
+                or not system_prompt_content.strip()):
             return _handle_validation_error(
                 "system_prompt_content must be a non-empty string",
                 raise_on_error,
@@ -180,7 +178,9 @@ def check_token_limits(
 
         if not isinstance(response_field, str) or not response_field.strip():
             return _handle_validation_error(
-                "response_field must be a non-empty string", raise_on_error, logger
+                "response_field must be a non-empty string",
+                raise_on_error,
+                logger,
             )
 
         if response_field not in df.columns:
@@ -222,9 +222,8 @@ def check_token_limits(
         return validation_result
 
     try:
-        token_counter_func = create_token_counter_util(
-            system_prompt_content, response_field, encoder
-        )
+        token_counter_func = create_token_counter_util(system_prompt_content,
+                                                       response_field, encoder)
         token_counts = df.apply(token_counter_func, axis=1)
 
         if token_counts.empty:
@@ -241,8 +240,7 @@ def check_token_limits(
         logger.debug(
             f"[TOKEN COUNT] Total: {int(token_stats['total'])}, "
             f"Avg: {token_stats['average']:.1f}, "
-            f"Max: {int(token_stats['max'])}"
-        )
+            f"Max: {int(token_stats['max'])}")
 
         if not is_under_limit:
             _log_token_usage(0, tokens_used_for_error=True)
@@ -253,9 +251,9 @@ def check_token_limits(
             details = (
                 f"Details: {token_stats['total']:.0f} tokens "
                 f"({token_stats['average']:.1f} avg, {token_stats['max']:.0f} max) "
-                f"vs limit {token_limit:.0f}."
-            )
-            raise TokenLimitError(f"Token limit exceeded {error_location}. {details}")
+                f"vs limit {token_limit:.0f}.")
+            raise TokenLimitError(
+                f"Token limit exceeded {error_location}. {details}")
 
         _log_token_usage(int(token_stats["total"]))
         return is_under_limit, token_stats
@@ -334,10 +332,10 @@ def prepare_output_path(
         return str(p_output_path)
     except PermissionError as e:
         raise FilePermissionError(
-            f"Permission denied when creating output path: {e}"
-        ) from e
+            f"Permission denied when creating output path: {e}") from e
     except OSError as e:
-        raise OutputDirectoryError(f"Failed to create output directory: {e}") from e
+        raise OutputDirectoryError(
+            f"Failed to create output directory: {e}") from e
 
 
 def calculate_and_log_token_usage(
@@ -356,34 +354,24 @@ def calculate_and_log_token_usage(
         output_col_name = "output_tokens"
 
         if encoder is not None and (
-            input_col_name not in df_with_results.columns
-            or output_col_name not in df_with_results.columns
-        ):
+                input_col_name not in df_with_results.columns
+                or output_col_name not in df_with_results.columns):
             df_with_results[input_col_name] = df_with_results.apply(
-                lambda row: count_input_tokens(
-                    row, system_prompt_content, response_field, encoder
-                ),
+                lambda row: count_input_tokens(row, system_prompt_content,
+                                               response_field, encoder),
                 axis=1,
             )
             df_with_results[output_col_name] = df_with_results.apply(
-                lambda row: count_completion_tokens(row, encoder), axis=1
-            )
+                lambda row: count_completion_tokens(row, encoder), axis=1)
 
-        n_input_tokens = (
-            int(df_with_results[input_col_name].sum())
-            if input_col_name in df_with_results.columns
-            else 0
-        )
-        n_output_tokens = (
-            int(df_with_results[output_col_name].sum())
-            if output_col_name in df_with_results.columns
-            else 0
-        )
+        n_input_tokens = (int(df_with_results[input_col_name].sum())
+                          if input_col_name in df_with_results.columns else 0)
+        n_output_tokens = (int(df_with_results[output_col_name].sum()) if
+                           output_col_name in df_with_results.columns else 0)
 
         try:
-            cost = CostEstimator.estimate_cost(
-                model_name, n_input_tokens, n_output_tokens
-            )
+            cost = CostEstimator.estimate_cost(model_name, n_input_tokens,
+                                               n_output_tokens)
             logger.info(
                 f"Estimated LLM cost: ${cost:.4f} (input: {n_input_tokens} tokens, output: {n_output_tokens} tokens, model: {model_name})"
             )
@@ -399,7 +387,8 @@ def calculate_and_log_token_usage(
                 event_log_path=DEFAULT_EVENT_LOG_PATH,
                 pricing_csv_path=DEFAULT_PRICING_CSV_PATH,
             )  # Removed timestamp=None, request_id=None as they are default in function
-            logger.info("Token usage event logged to output/token_usage_events.jsonl.")
+            logger.info(
+                "Token usage event logged to output/token_usage_events.jsonl.")
         except Exception as log_exc:
             logger.error(
                 f"[Token Logging Error] Failed to log token usage event: {log_exc}"
@@ -426,11 +415,11 @@ def process_file_common(
         p_filepath = Path(current_filepath)
         if not p_filepath.exists():
             raise BatchGraderFileNotFoundError(
-                f"Input file not found: {current_filepath}"
-            )
+                f"Input file not found: {current_filepath}")
         df_loaded = load_data(current_filepath)
         if df_loaded is None:
-            raise FileFormatError(f"Failed to load data from {current_filepath}")
+            raise FileFormatError(
+                f"Failed to load data from {current_filepath}")
         logger.info(f"Loaded {len(df_loaded)} rows from {current_filepath}")
         if df_loaded.empty:
             logger.info(f"No data loaded from {current_filepath}. Skipping.")
@@ -454,7 +443,8 @@ def process_file_common(
             enc,
             tok_limit,
             filepath=file_path_str,
-            raise_on_error=True,  # Important: this makes it raise TokenLimitError
+            raise_on_error=
+            True,  # Important: this makes it raise TokenLimitError
         )
         # If no error was raised by check_token_limits, it means it passed.
         # The token logging for *successful pre-check* is handled within check_token_limits itself.
@@ -478,9 +468,8 @@ def process_file_common(
                 base_filename_for_tagging=os.path.basename(file_path_str),
             )
         except Exception as batch_exc:
-            raise APIError(
-                f"Batch job failed for {file_path_str}: {batch_exc}"
-            ) from batch_exc
+            raise APIError(f"Batch job failed for {file_path_str}: {batch_exc}"
+                           ) from batch_exc
 
     try:
         df = _load_and_validate(filepath)
@@ -505,20 +494,18 @@ def process_file_common(
 
         force_chunk_count = config.get("force_chunk_count", 0)
         # Corrected logic for use_concurrent
-        split_token_limit_config = config.get(
-            "split_token_limit", DEFAULT_SPLIT_TOKEN_LIMIT
-        )
+        split_token_limit_config = config.get("split_token_limit",
+                                              DEFAULT_SPLIT_TOKEN_LIMIT)
         use_concurrent = force_chunk_count > 1 or (
-            token_stats and token_stats.get("total", 0) > split_token_limit_config
-        )
+            token_stats
+            and token_stats.get("total", 0) > split_token_limit_config)
 
         if use_concurrent:
             # Note: process_file_concurrently needs api_key_prefix, which is derived from LLMClient.
             # Consider how LLMClient is instantiated here if api_key_prefix is strictly needed.
             # For now, assuming it can get it or it's passed via config.
             llm_client_temp = LLMClient(
-                config=config
-            )  # To get api_key_prefix if needed
+                config=config)  # To get api_key_prefix if needed
             df_with_results = process_file_concurrently(
                 filepath=filepath,  # Original filepath for splitting
                 config=config,
@@ -529,21 +516,17 @@ def process_file_common(
                 tiktoken_encoding_func=encoder,
             )
         else:
-            df_with_results = _process_with_llm(
-                df, system_prompt_content, response_field, filepath
-            )
+            df_with_results = _process_with_llm(df, system_prompt_content,
+                                                response_field, filepath)
 
         if df_with_results is not None:
             # Check for 'llm_score' which might indicate errors from run_batch_job
             # This error checking logic might be specific to how run_batch_job signals errors.
-            if (
-                "llm_score" in df_with_results.columns
-            ):  # Assuming llm_score may contain error string
+            if ("llm_score" in df_with_results.columns
+                ):  # Assuming llm_score may contain error string
                 error_rows = (
-                    df_with_results["llm_score"]
-                    .astype(str)
-                    .str.contains("Error", case=False, na=False)
-                )
+                    df_with_results["llm_score"].astype(str).str.contains(
+                        "Error", case=False, na=False))
                 if error_rows.any():
                     logger.info(f"Total rows with errors: {error_rows.sum()}")
                     if error_rows.sum() == len(df_with_results):
@@ -568,11 +551,11 @@ def process_file_common(
             raise DataValidationError(f"No results obtained for {filepath}")
 
     except (
-        FileNotFoundError,
-        FileFormatError,
-        DataValidationError,
-        TokenLimitError,  # This will be raised by _check_token_limits_wrapper if exceeded
-        APIError,
+            FileNotFoundError,
+            FileFormatError,
+            DataValidationError,
+            TokenLimitError,  # This will be raised by _check_token_limits_wrapper if exceeded
+            APIError,
     ):
         raise  # Re-raise known, handled exceptions
     except Exception as e:
@@ -601,9 +584,8 @@ def process_file_wrapper(
     """
     try:
         # Initial attempt to process the file as a whole
-        output_path = prepare_output_path(
-            filepath, output_dir, config, is_reprocessing_run
-        )
+        output_path = prepare_output_path(filepath, output_dir, config,
+                                          is_reprocessing_run)
         success, df_with_results = process_file_common(
             filepath,
             output_dir,  # Pass output_dir, though process_file_common might not use it directly
@@ -617,22 +599,19 @@ def process_file_wrapper(
         if success and df_with_results is not None:
             # Load original to check for custom_id
             original_df = load_data(filepath)
-            if (
-                original_df is not None
-                and "custom_id" not in original_df.columns
-                and "custom_id" in df_with_results.columns
-            ):
-                df_with_results = df_with_results.drop(
-                    columns=["custom_id"], errors="ignore"
-                )
+            if (original_df is not None
+                    and "custom_id" not in original_df.columns
+                    and "custom_id" in df_with_results.columns):
+                df_with_results = df_with_results.drop(columns=["custom_id"],
+                                                       errors="ignore")
                 logger.debug(
                     f"Dropped generated 'custom_id' column from results for {filepath}"
                 )
             save_data(df_with_results, output_path)
             logger.info(  # Changed from logger.success to logger.info for broader compatibility
-                f"Processed {filepath}. Results saved to {output_path}"
-            )
-            logger.info(f"Total rows successfully processed: {len(df_with_results)}")
+                f"Processed {filepath}. Results saved to {output_path}")
+            logger.info(
+                f"Total rows successfully processed: {len(df_with_results)}")
             return True
         # If process_file_common returned False but didn't raise TokenLimitError, it's some other failure
         elif not success:
@@ -645,9 +624,9 @@ def process_file_wrapper(
         logger.debug(f"[TokenLimitError Caught in Wrapper] {str(e)}")
         logger.info(
             "The file exceeds the token limit. Would you like to automatically split it "
-            "into smaller chunks and process them? (y/n)"
-        )
-        logger.info("(Will proceed automatically after 30 seconds if no response)")
+            "into smaller chunks and process them? (y/n)")
+        logger.info(
+            "(Will proceed automatically after 30 seconds if no response)")
 
         import threading  # Keep import local if only used here
 
@@ -656,11 +635,13 @@ def process_file_wrapper(
         def get_input_with_timeout():
             from contextlib import suppress
 
-            with suppress(EOFError):  # Handle EOF if stdin is closed (e.g. in tests)
+            with suppress(
+                    EOFError):  # Handle EOF if stdin is closed (e.g. in tests)
                 try:
                     user_response_container["response"] = input()
                 except RuntimeError:  # Can happen if stdin is not a tty
-                    logger.warning("Could not read from stdin for user prompt.")
+                    logger.warning(
+                        "Could not read from stdin for user prompt.")
                     user_response_container["response"] = "y"  # Default to yes
 
         input_thread = threading.Thread(target=get_input_with_timeout)
@@ -729,8 +710,8 @@ def process_file_wrapper(
             if final_output_path_chunked.exists():
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 final_output_path_chunked = (
-                    output_dir_path
-                    / f"{Path(output_filename_chunked).stem}_{timestamp}{Path(output_filename_chunked).suffix}"
+                    output_dir_path /
+                    f"{Path(output_filename_chunked).stem}_{timestamp}{Path(output_filename_chunked).suffix}"
                 )
 
             save_data(df_result_from_chunks, str(final_output_path_chunked))
@@ -746,17 +727,17 @@ def process_file_wrapper(
             return False
 
     except (
-        FileNotFoundError,
-        FileFormatError,
-        DataValidationError,
-        APIError,
-        OutputDirectoryError,
-        FilePermissionError,
-        FileProcessingError,  # From process_file_common if it raises a general one
+            FileNotFoundError,
+            FileFormatError,
+            DataValidationError,
+            APIError,
+            OutputDirectoryError,
+            FilePermissionError,
+            FileProcessingError,  # From process_file_common if it raises a general one
     ) as e:
-        logger.error(
-            f"[HANDLED ERROR in Wrapper] {str(e)} for {filepath}", exc_info=False
-        )  # exc_info=False to reduce noise for handled errors
+        logger.error(f"[HANDLED ERROR in Wrapper] {str(e)} for {filepath}",
+                     exc_info=False
+                     )  # exc_info=False to reduce noise for handled errors
         return False
     except Exception as e:
         logger.error(
@@ -777,13 +758,12 @@ def _generate_chunk_job_objects(
 ) -> list[BatchJob]:
     """Splits the input file and creates BatchJob objects for each chunk."""
     splitter_config = config.get("input_splitter_options", {})
-    default_split_limit = config.get("split_token_limit", DEFAULT_SPLIT_TOKEN_LIMIT)
-    max_tokens_per_chunk = splitter_config.get(
-        "max_tokens_per_chunk", default_split_limit
-    )
+    default_split_limit = config.get("split_token_limit",
+                                     DEFAULT_SPLIT_TOKEN_LIMIT)
+    max_tokens_per_chunk = splitter_config.get("max_tokens_per_chunk",
+                                               default_split_limit)
     max_rows_per_chunk = splitter_config.get(
-        "max_rows_per_chunk", config.get("split_row_limit")
-    )  # Can be None
+        "max_rows_per_chunk", config.get("split_row_limit"))  # Can be None
     force_chunk_count_val = splitter_config.get("force_chunk_count", None)
 
     logger.debug(f"Generating chunk job objects for: {original_filepath}")
@@ -791,13 +771,9 @@ def _generate_chunk_job_objects(
         f"Using splitter config: max_tokens={max_tokens_per_chunk}, max_rows={max_rows_per_chunk}, force_chunks={force_chunk_count_val}"
     )
 
-    if not (
-        callable(tiktoken_encoding_func)
-        or (
-            hasattr(tiktoken_encoding_func, "encode")
-            and callable(tiktoken_encoding_func.encode)
-        )
-    ):
+    if not (callable(tiktoken_encoding_func) or
+            (hasattr(tiktoken_encoding_func, "encode")
+             and callable(tiktoken_encoding_func.encode))):
         logger.error(
             f"Invalid tiktoken_encoding_func passed. Type: {type(tiktoken_encoding_func)}. Attempting to load default."
         )
@@ -828,14 +804,12 @@ def _generate_chunk_job_objects(
 
         # This logic should be robust. If `system_prompt_content` is a column name:
         current_system_prompt = str(
-            row.get(system_prompt_content, system_prompt_content)
-            if isinstance(system_prompt_content, str) and system_prompt_content in row
-            else system_prompt_content
-        )
+            row.get(system_prompt_content, system_prompt_content
+                    ) if isinstance(system_prompt_content, str)
+            and system_prompt_content in row else system_prompt_content)
 
         row_content_parts = [
-            str(value)
-            for col, value in row.items()
+            str(value) for col, value in row.items()
             if col != response_field and pd.notna(value)
         ]
         row_text = " ".join(row_content_parts)
@@ -845,9 +819,11 @@ def _generate_chunk_job_objects(
         if callable(tiktoken_encoding_func):
             return len(tiktoken_encoding_func(full_content_for_tokenization))
         elif hasattr(tiktoken_encoding_func, "encode"):
-            return len(tiktoken_encoding_func.encode(full_content_for_tokenization))
+            return len(
+                tiktoken_encoding_func.encode(full_content_for_tokenization))
         # Fallback, though previous check should catch invalid encoder
-        logger.error("Splitter's token counting failed due to invalid encoder.")
+        logger.error(
+            "Splitter's token counting failed due to invalid encoder.")
         return 1_000_000  # Penalize to avoid infinite loops if encoder fails
 
     try:
@@ -864,8 +840,8 @@ def _generate_chunk_job_objects(
         )
     except Exception as e:
         logger.error(
-            f"Error during file splitting for {original_filepath}: {e}", exc_info=True
-        )
+            f"Error during file splitting for {original_filepath}: {e}",
+            exc_info=True)
         return []
 
     if not chunk_file_paths:
@@ -881,7 +857,8 @@ def _generate_chunk_job_objects(
             logger.debug(f"Loading chunk file: {chunk_path}")
             chunk_df = load_data(str(chunk_path))
             if chunk_df is None or chunk_df.empty:
-                logger.warning(f"Skipping empty or unreadable chunk file: {chunk_path}")
+                logger.warning(
+                    f"Skipping empty or unreadable chunk file: {chunk_path}")
                 continue
 
             if "custom_id" in chunk_df.columns and "id" in chunk_df.columns:
@@ -890,7 +867,9 @@ def _generate_chunk_job_objects(
                 )
             elif "id" in chunk_df.columns:
                 chunk_df = chunk_df.rename(columns={"id": "custom_id"})
-                logger.info(f"Renamed 'id' to 'custom_id' for chunk: {chunk_path.name}")
+                logger.info(
+                    f"Renamed 'id' to 'custom_id' for chunk: {chunk_path.name}"
+                )
 
             if "custom_id" in chunk_df.columns:
                 if not pd.api.types.is_string_dtype(chunk_df["custom_id"]):
@@ -922,7 +901,8 @@ def _generate_chunk_job_objects(
             )
             # Create a placeholder failed job
             failed_job = BatchJob(
-                chunk_id_str=(chunk_path.stem if chunk_path else f"failed_chunk_{i}"),
+                chunk_id_str=(chunk_path.stem
+                              if chunk_path else f"failed_chunk_{i}"),
                 chunk_df=None,
                 system_prompt=system_prompt_content,
                 response_field=response_field,
@@ -931,28 +911,30 @@ def _generate_chunk_job_objects(
                 llm_model=llm_model_name,
                 api_key_prefix=api_key_prefix,
                 status="error",
-                error_message=f"Failed to load/prepare BatchJob from chunk: {e}",
+                error_message=
+                f"Failed to load/prepare BatchJob from chunk: {e}",
                 error_details=traceback.format_exc(),
             )
             jobs.append(failed_job)
 
-    logger.info(f"Generated {len(jobs)} BatchJob objects from {original_filepath}.")
+    logger.info(
+        f"Generated {len(jobs)} BatchJob objects from {original_filepath}.")
     return jobs
 
 
 def _execute_single_batch_job_task(
-    batch_job: BatchJob,
-    llm_client_instance: Optional[LLMClient] = None,  # Renamed for clarity
-    response_field_name: str = "response",
-    config_for_client: Optional[Dict[str, Any]] = None,  # Renamed for clarity
+        batch_job: BatchJob,
+        llm_client_instance: Optional[LLMClient] = None,  # Renamed for clarity
+        response_field_name: str = "response",
+        config_for_client: Optional[Dict[str,
+                                         Any]] = None,  # Renamed for clarity
 ) -> BatchJob:
     """Worker function to process a single BatchJob."""
     if batch_job.chunk_df is None or batch_job.chunk_df.empty:
         if batch_job.status != "error":  # Avoid overriding existing error status
             batch_job.status = "error"
             batch_job.error_message = (
-                "Chunk DataFrame is None or empty at task execution."
-            )
+                "Chunk DataFrame is None or empty at task execution.")
         logger.error(
             f"[{batch_job.chunk_id_str}] Skipping task: {batch_job.error_message}"
         )
@@ -962,12 +944,14 @@ def _execute_single_batch_job_task(
     if current_llm_client is None:
         try:
             current_llm_client = LLMClient(config=config_for_client)
-            logger.debug(f"[{batch_job.chunk_id_str}] Created new LLMClient for thread")
+            logger.debug(
+                f"[{batch_job.chunk_id_str}] Created new LLMClient for thread")
         except Exception as e:
             batch_job.status = "error"
             batch_job.error_message = f"Failed to create LLMClient: {str(e)}"
             batch_job.error_details = traceback.format_exc()
-            logger.error(f"[{batch_job.chunk_id_str}] {batch_job.error_message}")
+            logger.error(
+                f"[{batch_job.chunk_id_str}] {batch_job.error_message}")
             return batch_job
 
     try:
@@ -992,13 +976,12 @@ def _execute_single_batch_job_task(
             logger.debug(
                 f"[{batch_job.chunk_id_str}] Task completed, result: DataFrame {len(api_result)} rows."
             )
-        elif isinstance(api_result, dict) and (
-            "error" in api_result or "custom_id_of_failed_item" in api_result
-        ):
+        elif isinstance(api_result,
+                        dict) and ("error" in api_result or
+                                   "custom_id_of_failed_item" in api_result):
             batch_job.status = "failed"  # API specific failure for a batch
             batch_job.error_message = api_result.get(
-                "error_message", api_result.get("error", str(api_result))
-            )
+                "error_message", api_result.get("error", str(api_result)))
             batch_job.error_details = api_result
             logger.warning(
                 f"[{batch_job.chunk_id_str}] Task API failure: {batch_job.error_message}"
@@ -1049,38 +1032,35 @@ def _pfc_submit_jobs(
     return future_to_job_map
 
 
-def _handle_step_error(
-    step_name: str, e: Exception, filepath: Optional[str] = None
-) -> None:
+def _handle_step_error(step_name: str,
+                       e: Exception,
+                       filepath: Optional[str] = None) -> None:
     file_msg = f" for {Path(filepath).name}" if filepath else ""
     logger.error(f"{step_name}{file_msg} failed: {e}", exc_info=True)
     # This function returns None implicitly, its purpose is logging.
 
 
 def _pfc_process_completed_future(
-    future: Any,
-    future_to_job_map: Dict[Any, BatchJob],
-    completed_jobs_list: List[BatchJob],
-    live_display: Optional[Live],
-    rich_table: RichJobTable,
-    all_jobs_list: List[BatchJob],
-    halt_on_failure_flag: bool,
-    original_filepath_str: str,  # Renamed for clarity
-    llm_output_col_name: str,  # Renamed for clarity
+        future: Any,
+        future_to_job_map: Dict[Any, BatchJob],
+        completed_jobs_list: List[BatchJob],
+        live_display: Optional[Live],
+        rich_table: RichJobTable,
+        all_jobs_list: List[BatchJob],
+        halt_on_failure_flag: bool,
+        original_filepath_str: str,  # Renamed for clarity
+        llm_output_col_name: str,  # Renamed for clarity
 ) -> bool:
     """Processes a single completed future. Returns True if halt is signaled."""
 
-    def _create_error_dataframe(
-        job_obj: BatchJob, error_custom_id_val=None
-    ) -> pd.DataFrame:
+    def _create_error_dataframe(job_obj: BatchJob,
+                                error_custom_id_val=None) -> pd.DataFrame:
         """Helper to create a DataFrame representing an error for a job."""
         if error_custom_id_val is None:
             # Try to get custom_id from chunk_df if available, else use chunk_id_str
-            if (
-                job_obj.chunk_df is not None
-                and "custom_id" in job_obj.chunk_df.columns
-                and not job_obj.chunk_df["custom_id"].empty
-            ):
+            if (job_obj.chunk_df is not None
+                    and "custom_id" in job_obj.chunk_df.columns
+                    and not job_obj.chunk_df["custom_id"].empty):
                 # Potentially multiple IDs if chunk_df exists. Use first or a generic marker.
                 # For simplicity, let's use chunk_id_str if actual IDs are problematic here.
                 error_custom_id_val = (
@@ -1090,18 +1070,19 @@ def _pfc_process_completed_future(
                 error_custom_id_val = job_obj.chunk_id_str
 
         error_data = {
-            "custom_id": error_custom_id_val,
-            llm_output_col_name: f"ERROR: {job_obj.error_message or 'Unknown processing error'}",
-            "error_type": (
-                str(type(job_obj.error_details).__name__)
-                if job_obj.error_details
-                else (job_obj.status.capitalize() + "Error")
-            ),
-            "original_file": original_filepath_str,
-            "chunk_id": job_obj.chunk_id_str,
-            "error_details": (
-                str(job_obj.error_details) if job_obj.error_details else "No details"
-            ),
+            "custom_id":
+            error_custom_id_val,
+            llm_output_col_name:
+            f"ERROR: {job_obj.error_message or 'Unknown processing error'}",
+            "error_type": (str(type(job_obj.error_details).__name__)
+                           if job_obj.error_details else
+                           (job_obj.status.capitalize() + "Error")),
+            "original_file":
+            original_filepath_str,
+            "chunk_id":
+            job_obj.chunk_id_str,
+            "error_details": (str(job_obj.error_details)
+                              if job_obj.error_details else "No details"),
         }
         return pd.DataFrame([error_data])
 
@@ -1136,7 +1117,8 @@ def _pfc_process_completed_future(
                 logger.error(
                     f"Chunk {job_from_map.chunk_id_str}: {job_from_map.error_message}"
                 )
-                job_from_map.result_data = _create_error_dataframe(job_from_map)
+                job_from_map.result_data = _create_error_dataframe(
+                    job_from_map)
                 completed_jobs_list.append(
                     job_from_map
                 )  # Still add, it's "completed" in terms of processing attempt
@@ -1146,13 +1128,12 @@ def _pfc_process_completed_future(
                 f"Chunk {job_from_map.chunk_id_str} {job_from_map.status}. Error: {job_from_map.error_message}"
             )
             # Ensure it has an error dataframe and is added to completed_jobs_list for aggregation
-            if (
-                job_from_map not in completed_jobs_list
-            ):  # Avoid double-adding if already processed
+            if (job_from_map not in completed_jobs_list
+                ):  # Avoid double-adding if already processed
                 if job_from_map.result_data is None or not isinstance(
-                    job_from_map.result_data, pd.DataFrame
-                ):
-                    job_from_map.result_data = _create_error_dataframe(job_from_map)
+                        job_from_map.result_data, pd.DataFrame):
+                    job_from_map.result_data = _create_error_dataframe(
+                        job_from_map)
                 completed_jobs_list.append(job_from_map)
 
             if halt_on_failure_flag:
@@ -1164,20 +1145,21 @@ def _pfc_process_completed_future(
                 return True  # Signal halt
 
     except (
-        Exception
+            Exception
     ) as e:  # Exception during future.result() or subsequent processing here
         job_from_map.status = "error"
         job_from_map.error_message = (
             f"Exception processing future for {job_from_map.chunk_id_str}: {e}"
         )
         job_from_map.error_details = traceback.format_exc()
-        logger.error(f"[{job_from_map.chunk_id_str}] Exception: {e}", exc_info=True)
+        logger.error(f"[{job_from_map.chunk_id_str}] Exception: {e}",
+                     exc_info=True)
 
         if job_from_map not in completed_jobs_list:
             if job_from_map.result_data is None or not isinstance(
-                job_from_map.result_data, pd.DataFrame
-            ):
-                job_from_map.result_data = _create_error_dataframe(job_from_map)
+                    job_from_map.result_data, pd.DataFrame):
+                job_from_map.result_data = _create_error_dataframe(
+                    job_from_map)
             completed_jobs_list.append(job_from_map)
 
         if halt_on_failure_flag:
@@ -1208,34 +1190,37 @@ def _pfc_monitor_and_process_futures(
     halt_signaled = False
     try:
         with Live(
-            rich_table.build_table(all_jobs_list),  # Initial table
-            console=rich_table.console,
-            refresh_per_second=4,
-            vertical_overflow="visible",
+                rich_table.build_table(all_jobs_list),  # Initial table
+                console=rich_table.console,
+                refresh_per_second=4,
+                vertical_overflow="visible",
         ) as live:
             for future in as_completed(future_to_job_map.keys()):
                 if _pfc_process_completed_future(
-                    future=future,
-                    future_to_job_map=future_to_job_map,
-                    completed_jobs_list=completed_jobs_list,
-                    live_display=live,  # Pass the Live instance
-                    rich_table=rich_table,
-                    all_jobs_list=all_jobs_list,  # Pass the main list for table updates
-                    halt_on_failure_flag=halt_on_failure_flag,
-                    original_filepath_str=original_filepath_str,
-                    llm_output_col_name=llm_output_col_name,
+                        future=future,
+                        future_to_job_map=future_to_job_map,
+                        completed_jobs_list=completed_jobs_list,
+                        live_display=live,  # Pass the Live instance
+                        rich_table=rich_table,
+                        all_jobs_list=
+                        all_jobs_list,  # Pass the main list for table updates
+                        halt_on_failure_flag=halt_on_failure_flag,
+                        original_filepath_str=original_filepath_str,
+                        llm_output_col_name=llm_output_col_name,
                 ):
                     halt_signaled = True
                     logger.error(
                         f"Halt signal received for {original_filepath_str}. Cancelling remaining."
                     )
                     # Cancel remaining futures
-                    for fut_to_cancel, job_to_cancel in future_to_job_map.items():
+                    for fut_to_cancel, job_to_cancel in future_to_job_map.items(
+                    ):
                         if not fut_to_cancel.done() and fut_to_cancel.cancel():
                             job_to_cancel.status = (
                                 "cancelled"  # Update status on the original job object
                             )
-                            logger.debug(f"Cancelled job {job_to_cancel.chunk_id_str}.")
+                            logger.debug(
+                                f"Cancelled job {job_to_cancel.chunk_id_str}.")
                     break  # Exit as_completed loop
             live.update(rich_table.build_table(all_jobs_list))  # Final update
     except Exception as e:
@@ -1246,8 +1231,7 @@ def _pfc_monitor_and_process_futures(
 
 def _pfc_aggregate_and_cleanup(
     processed_jobs_list: List[
-        BatchJob
-    ],  # Renamed as it contains processed jobs (completed/failed/error)
+        BatchJob],  # Renamed as it contains processed jobs (completed/failed/error)
     original_filepath_str: str,
     # response_field_name: str, # Not directly used here for aggregation logic itself
 ) -> Optional[pd.DataFrame]:
@@ -1256,22 +1240,22 @@ def _pfc_aggregate_and_cleanup(
     total_successful_rows = 0
 
     for job in processed_jobs_list:
-        if isinstance(job.result_data, pd.DataFrame) and not job.result_data.empty:
+        if isinstance(job.result_data,
+                      pd.DataFrame) and not job.result_data.empty:
             all_results_dfs.append(job.result_data)
             if job.status == "completed":  # Only count rows from truly successful jobs
                 total_successful_rows += len(job.result_data)
         elif job.status == "completed" and (
-            job.result_data is None or isinstance(job.result_data, pd.DataFrame)
-        ):
+                job.result_data is None
+                or isinstance(job.result_data, pd.DataFrame)):
             logger.warning(
                 f"Job {job.chunk_id_str} status 'completed' but no valid result_data. Skipping."
             )
             # For failed/error jobs, their result_data (if it's an error DataFrame) will be included
 
     original_file_path_obj = Path(original_filepath_str)
-    chunked_dir_to_clean = (
-        original_file_path_obj.parent / f"_chunked_{original_file_path_obj.stem}"
-    )
+    chunked_dir_to_clean = (original_file_path_obj.parent /
+                            f"_chunked_{original_file_path_obj.stem}")
 
     if not all_results_dfs:
         logger.error(
@@ -1335,28 +1319,29 @@ def process_file_concurrently(
             tiktoken_encoding_func=tiktoken_encoding_func,
         )
     except (
-        Exception
+            Exception
     ) as e:  # Catch-all for safety, though _generate should handle its own
         _handle_step_error("Job generation", e, filepath)
         return None
 
     if not jobs:
-        logger.warning(f"No BatchJob objects generated for {filepath}. Cannot proceed.")
+        logger.warning(
+            f"No BatchJob objects generated for {filepath}. Cannot proceed.")
         # Attempt to cleanup if a chunked directory was made by splitter but no jobs resulted
         original_file_path_obj = Path(filepath)
-        chunked_dir_potential = (
-            original_file_path_obj.parent / f"_chunked_{original_file_path_obj.stem}"
-        )
+        chunked_dir_potential = (original_file_path_obj.parent /
+                                 f"_chunked_{original_file_path_obj.stem}")
         if chunked_dir_potential.exists():
             cleanup_chunked_dir(chunked_dir_potential)
         return None
 
     halt_on_failure = config.get("halt_on_chunk_failure", True)
-    max_workers_val = (
-        config.get("max_simultaneous_batches") or config.get("max_workers") or 2
-    )  # Default to 2 if not found
+    max_workers_val = (config.get("max_simultaneous_batches")
+                       or config.get("max_workers")
+                       or 2)  # Default to 2 if not found
     if not (isinstance(max_workers_val, int) and max_workers_val > 0):
-        logger.warning(f"Invalid max_workers '{max_workers_val}', defaulting to 2.")
+        logger.warning(
+            f"Invalid max_workers '{max_workers_val}', defaulting to 2.")
         max_workers_val = 2
 
     # Step 2: Submit jobs
@@ -1378,7 +1363,8 @@ def process_file_concurrently(
 
     # Determine the actual column name where LLM output is expected/stored.
     # This might be `response_field` or a more specific one from config.
-    llm_actual_output_column = config.get("llm_output_column_name", response_field)
+    llm_actual_output_column = config.get("llm_output_column_name",
+                                          response_field)
 
     # Step 3: Monitor and process futures
     halted = _pfc_monitor_and_process_futures(
@@ -1393,7 +1379,8 @@ def process_file_concurrently(
     )
     # `halted` being None would indicate an error within _pfc_monitor_and_process_futures itself.
     if halted is None:  # Critical error in monitoring
-        logger.error(f"Critical error in job monitoring for {filepath}. Aborting.")
+        logger.error(
+            f"Critical error in job monitoring for {filepath}. Aborting.")
         return None
 
     # Step 4: Aggregate results and cleanup
@@ -1421,17 +1408,17 @@ def process_file_concurrently(
 def cleanup_chunked_dir(chunked_dir_path: Path) -> None:
     """Remove the given directory of chunked files if it exists."""
     if not chunked_dir_path.is_dir():
-        logger.debug(
-            "No chunked directory found at %s; skipping cleanup.", chunked_dir_path
-        )
+        logger.debug("No chunked directory found at %s; skipping cleanup.",
+                     chunked_dir_path)
         return
 
     try:
         # prune_chunked_dir (from file_utils) should handle actual deletion
         prune_chunked_dir(
-            str(chunked_dir_path)
-        )  # Assumes prune_chunked_dir deletes files and the dir
-        logger.info("Successfully pruned chunked directory %s", chunked_dir_path)
+            str(chunked_dir_path
+                ))  # Assumes prune_chunked_dir deletes files and the dir
+        logger.info("Successfully pruned chunked directory %s",
+                    chunked_dir_path)
     except Exception as exc:
         logger.error(
             "Error pruning chunked directory %s: %s",

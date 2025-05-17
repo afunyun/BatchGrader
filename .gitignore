@@ -44,3 +44,8 @@ docs/seekret/
 .coverage
 output/batch_results/*.csv
 *.ps1
+
+node_modules
+.trunk/
+.trunk-ignore
+junit.xml

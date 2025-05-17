@@ -18,14 +18,13 @@ runtimes:
 lint:
   disabled:
     - checkov
-    - git-diff-check
-
     - markdownlint
     - osv-scanner
     - oxipng
     - trufflehog
     - yamllint
   enabled:
+    - git-diff-check
     - yapf@0.32.0
     - taplo@0.9.3
     - pylint@2.17.5

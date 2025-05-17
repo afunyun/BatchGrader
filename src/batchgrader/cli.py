@@ -169,9 +169,9 @@ def main():
         if args.mode == "batch":
             run_batch_processing(args, config)
         elif args.mode == "count":
-            run_count_mode(args, config)
+            run_count_mode()
         elif args.mode == "split":
-            run_split_mode(args, config)
+            run_split_mode()
         else:
             # This case should ideally not be reached if choices are enforced by argparse
             logger.error(f"Unsupported mode: {args.mode}")

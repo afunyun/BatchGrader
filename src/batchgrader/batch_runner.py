@@ -2,21 +2,15 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-
-from batchgrader.constants import (
-    DEFAULT_GLOBAL_TOKEN_LIMIT,
-    DEFAULT_RESPONSE_FIELD,
-)
+from batchgrader.constants import DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_RESPONSE_FIELD
 
 # load_data and save_data were here, removed as unused by current functions
-from batchgrader.file_processor import (
-    process_file_wrapper,
-)
+from batchgrader.file_processor import process_file_wrapper
 from batchgrader.llm_client import LLMClient
+from batchgrader.log_utils import prune_logs_if_needed
 
 # Retain prune_logs_if_needed for now, may be used by run_batch_processing
 from batchgrader.prompt_utils import load_system_prompt
-from batchgrader.log_utils import prune_logs_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +62,7 @@ def process_file(
 
     try:
         result = _process_file_with_config(config, filepath, output_dir, args)
-    except FileNotFoundError as _e:
+    except FileNotFoundError:
         logger.error(
             f"[ERROR] Input file not found: {filepath}. Please verify the file exists and you have read permissions."
         )
@@ -80,8 +74,7 @@ def process_file(
         result = False
     except RuntimeError as _e:
         logger.critical(
-            f"[CRITICAL ERROR] Unexpected error processing {filepath}: {_e}"
-        )
+            f"[CRITICAL ERROR] Unexpected error processing {filepath}: {_e}")
         result = False
 
     return result
@@ -115,9 +108,8 @@ def _process_file_with_config(
     encoder = temp_llm_client.encoder
 
     token_limit = config.get("global_token_limit", DEFAULT_GLOBAL_TOKEN_LIMIT)
-    is_reprocessing_run = (
-        args.reprocess if args and hasattr(args, "reprocess") else False
-    )
+    is_reprocessing_run = (args.reprocess
+                           if args and hasattr(args, "reprocess") else False)
 
     # process_file_wrapper is imported from batchgrader.file_processor
     return process_file_wrapper(
@@ -133,6 +125,13 @@ def _process_file_with_config(
 
 
 def run_batch_processing(args: Any, config: Dict[str, Any]):
+    """
+    Run batch processing based on the provided arguments and configuration.
+
+    Args:
+        args: Command line arguments containing input file or directory, output directory, and other options.
+        config: Configuration dictionary containing processing parameters.
+    """
     log_dir, archive_dir = get_log_dirs(args)  # Get log_dir and archive_dir
     prune_logs_if_needed(log_dir, archive_dir)
 
@@ -141,16 +140,15 @@ def run_batch_processing(args: Any, config: Dict[str, Any]):
         files_to_process.append(Path(args.input_file))
     elif args.input_dir:
         input_path = Path(args.input_dir)
-        # Basic glob for common data file types, can be expanded
-        for ext in ("*.csv", "*.jsonl", "*.json"):
-            files_to_process.extend(list(input_path.glob(ext)))
+        # Case-insensitive match for common data file types
+        allowed_exts = {".csv", ".jsonl", ".json"}
+        files_to_process = [
+            file for file in input_path.iterdir()
+            if file.is_file() and file.suffix.lower() in allowed_exts
+        ]
         if not files_to_process:
-            logger.warning(
-                f"No files found in input directory: {args.input_dir}")
+            logger.warning(f"No files found in input directory: {args.input_dir}")
             return
-    else:
-        logger.error("No input file or directory specified.")
-        return
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

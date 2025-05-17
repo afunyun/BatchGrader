@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "pandas": "^0.0.3",
+    "pyyaml": "^0.0.1",
+    "yaml": "^2.8.0"
+  },
+  "name": "BatchGrader",
+  "version": "0.6.1.0",
+  "description": "A python based openAI batch printing tool.",
+  "main": "src/cli.py",
+  "repository": "https://github.com/afunyun/BatchGrader.git",
+  "author": "afunyun <afunyun@gmail.com>",
+  "license": "MIT"
+}
