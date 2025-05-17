@@ -13,6 +13,14 @@ CONFIG_DIR = PROJECT_ROOT / 'config'
 CONFIG_PATH = CONFIG_DIR / 'config.yaml'
 PROMPTS_PATH = CONFIG_DIR / 'prompts.yaml'
 
+DEFAULT_RETRY_SETTINGS = {
+    'max_retries': 5,
+    'initial_backoff_seconds': 1,
+    'max_backoff_seconds': 60,
+    # Tenacity defaults for exponential_base (2) and jitter (True) are generally good.
+    # These can be exposed here if more specific control is needed later.
+}
+
 DEFAULT_CONFIG = {
     'max_simultaneous_batches':
     2,  # TESTING Number of parallel batch jobs per input file (concurrent chunk processing)
@@ -30,6 +38,7 @@ DEFAULT_CONFIG = {
     'max_tokens_per_response': 1000,
     'response_field': 'response',
     'batch_api_endpoint': '/v1/chat/completions',
+    'retry_settings': DEFAULT_RETRY_SETTINGS,
     'token_limit': 2_000_000,
     'split_token_limit': 500_000,  # Max tokens per split file (default ~500k)
     'split_row_limit':

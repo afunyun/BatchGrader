@@ -87,10 +87,47 @@ def main():
                         help="Show token/cost usage stats after processing.")
     # parser.add_argument('--costs', action='store_true', help='DEPRECATED: Use --stats. Show token/cost usage stats and exit.') # Kept for compatibility, maybe remove later
 
+    # Reprocessing arguments
+    reprocessing_group = parser.add_argument_group(
+        'Reprocessing Options',
+        'Arguments for reprocessing failed items from a previous run.'
+    )
+    reprocessing_group.add_argument(
+        "--reprocess-from",
+        type=str,
+        default=None,
+        help="Path to the output file from a previous run (e.g., .csv, .jsonl) containing failed items to reprocess."
+    )
+    reprocessing_group.add_argument(
+        "--reprocess-input-file",
+        type=str,
+        default=None,
+        help="Path to the *original* input file that was used to generate the output specified in --reprocess-from. Required if --reprocess-from is used."
+    )
+    reprocessing_group.add_argument(
+        "--original-input-id-column",
+        type=str,
+        default=None, 
+        help="Name of the column in the --reprocess-input-file (and present in --reprocess-from output) that contains unique IDs for matching failed items. Required if --reprocess-from is used."
+    )
+
     args = parser.parse_args()
 
+    # --- Add validation for reprocessing arguments ---
+    if args.reprocess_from:
+        if not args.reprocess_input_file:
+            parser.error("--reprocess-input-file is required when --reprocess-from is used.")
+        if not args.original_input_id_column:
+            parser.error("--original-input-id-column is required when --reprocess-from is used.")
+        logger.info(f"Reprocessing mode activated. Will reprocess failures from: {args.reprocess_from}")
+        logger.info(f"Using original input: {args.reprocess_input_file}")
+        logger.info(f"Matching on ID column: {args.original_input_id_column}")
+        if args.mode != 'batch':
+            logger.warning(f"Reprocessing is typically done in 'batch' mode. Current mode is '{args.mode}'. Consider using --mode batch.")
+
     # Default to input/ directory if neither input-file nor input-dir is provided
-    if not args.input_file and not args.input_dir:
+    # AND not in reprocessing mode (as reprocessing defines its input)
+    if not args.input_file and not args.input_dir and not args.reprocess_from:
         from src.constants import PROJECT_ROOT as DYNAMIC_PROJECT_ROOT
         default_input_dir = DYNAMIC_PROJECT_ROOT / 'input'
         if default_input_dir.exists() and any(default_input_dir.iterdir()):

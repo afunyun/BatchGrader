@@ -316,8 +316,8 @@ def test_get_token_usage_summary(mock_token_events, temp_event_log_path: Path):
     assert filtered_summary['total_tokens'] == 7500  # Only events from 05-11
     assert round(filtered_summary['total_cost'],
                  6) == 0.00635  # 0.005 + 0.00135
-    assert len(filtered_summary['breakdown']) == 1  # Just 'all'
-    assert filtered_summary['breakdown']['all']['count'] == 2  # 2 events
+    assert len(filtered_summary['breakdown']) == 1  # Just 'all_time_summary'
+    assert filtered_summary['breakdown']['all_time_summary']['count'] == 2  # 2 events
 
 
 def test_get_total_cost(temp_event_log_path: Path):

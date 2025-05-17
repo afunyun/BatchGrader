@@ -2,6 +2,12 @@
 
 All notable changes to the BatchGrader project will be documented in this file.
 
+## 0.6.0.3 - 2025-05-17
+
+- Core batch processing and evaluation functionality is robust, with 86%+ test coverage.
+- All major features work as intended as far as I've been able to test
+- No longer feeling that self conscious about it being a pub repo
+
 ## 0.5.9 - 2025-05-16
 
 ### Added

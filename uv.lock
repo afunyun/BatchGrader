@@ -27,7 +27,7 @@ wheels = [
 
 [[package]]
 name = "batchgrader"
-version = "0.5.8.3"
+version = "0.6.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "annotated-types" },

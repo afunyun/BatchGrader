@@ -219,12 +219,7 @@ def test_cli_load_config_file_not_found(mock_sys_argv,
     # src.cli.load_config.assert_called_once_with(str(non_existent_config)) # This line causes issues with pytest-mock if src.cli.load_config is already the mock_load_config fixture
 
     # Check that the error was logged
-    log_error_found = False
-    for call_args in mock_logger.error.call_args_list:
-        if "Configuration file not found" in call_args[0][0]:
-            log_error_found = True
-            break
-    assert log_error_found
+    assert any("Configuration file not found" in call_args[0][0] for call_args in mock_logger.error.call_args_list)
 
     # Check that run_batch_processing was called with an empty config
     args, config = mock_batch_runner_functions['batch'].call_args[0]

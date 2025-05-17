@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, TextIO, Any
 
 import pandas as pd
-from src.input_splitter import FileNotFoundError as InputSplitterFileNotFoundError
+from src.input_splitter import FileNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def _load_pricing(pricing_csv_path: Path) -> Dict[str, Dict[str, float]]:
     Returns a dict of model -> {input, output} pricing.
     """
     if not pricing_csv_path.exists():
-        raise InputSplitterFileNotFoundError(
+        raise FileNotFoundError(
             f"Pricing file not found: {pricing_csv_path}")
     pricing = {}
     with open(pricing_csv_path, 'r', encoding='utf-8') as f:
@@ -94,7 +94,11 @@ def _load_log(log_path: Path) -> List[Dict[str, Any]]:
     try:
         with open(log_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except Exception:
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to load JSON log: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"An error occurred while loading log: {e}")
         return []
 
 
@@ -209,23 +213,23 @@ def get_token_usage_summary(event_log_path: Path,
             continue
         summary['total_tokens'] += e['total_tokens']
         summary['total_cost'] += e['cost']
-        key = None
+        
+        key_to_set = None
         if group_by == 'day':
-            key = e['timestamp'][:10]
+            key_to_set = e['timestamp'][:10]
         elif group_by == 'model':
-            key = e['model']
+            key_to_set = e['model']
         elif group_by == 'all':
-            key = 'all'
-        if key:
-            if key not in summary['breakdown']:
-                summary['breakdown'][key] = {
-                    'tokens': 0,
-                    'cost': 0.0,
-                    'count': 0
-                }
-            summary['breakdown'][key]['tokens'] += e['total_tokens']
-            summary['breakdown'][key]['cost'] += e['cost']
-            summary['breakdown'][key]['count'] += 1
+            key_to_set = 'all_time_summary' # Consistent key for 'all'
+        # else: key_to_set remains None if group_by is unrecognized
+
+        if key_to_set:
+            if key_to_set not in summary['breakdown']:
+                summary['breakdown'][key_to_set] = {'tokens': 0, 'cost': 0.0}
+            summary['breakdown'][key_to_set]['tokens'] += e['total_tokens']
+            summary['breakdown'][key_to_set]['cost'] += e['cost']
+            summary['breakdown'][key_to_set].setdefault('count', 0)
+            summary['breakdown'][key_to_set]['count'] += 1
     summary['total_cost'] = round(summary['total_cost'], 6)
     for v in summary['breakdown'].values():
         v['cost'] = round(v['cost'], 6)
@@ -257,7 +261,8 @@ def get_token_usage_for_day(api_key: str,
     prefix = _get_api_key_prefix(api_key)
     log = _load_log(log_path)
 
-    for entry in log:
-        if entry['date'] == date_str and entry['api_key_prefix'] == prefix:
-            return entry['tokens_submitted']
-    return 0
+    return next((
+        entry['tokens_submitted']
+        for entry in log
+        if entry['date'] == date_str and entry['api_key_prefix'] == prefix
+    ), 0)

@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional
 import logging
 
 import openai
+import tenacity
+from openai import APIConnectionError, RateLimitError, APIStatusError, APITimeoutError
 from openai import OpenAI
 from rich.console import Console
 
@@ -57,6 +59,29 @@ class LLMClient:
             f"LLMClient initialized. Model: {self.model}, Endpoint: {self.endpoint}"
         )
 
+        # Retry settings initialization
+        self.retry_settings = get_config_value(self.config, 'retry_settings', {})
+        self.max_retries = self.retry_settings.get('max_retries', 3) 
+        self.initial_backoff = self.retry_settings.get('initial_backoff_seconds', 1)
+        self.max_backoff = self.retry_settings.get('max_backoff_seconds', 60)
+
+        self.retry_decorator = tenacity.retry(
+            stop=tenacity.stop_after_attempt(self.max_retries),
+            wait=tenacity.wait_exponential(multiplier=1, min=self.initial_backoff, max=self.max_backoff),
+            retry=(
+                tenacity.retry_if_exception_type(APIConnectionError) |
+                tenacity.retry_if_exception_type(RateLimitError) |
+                tenacity.retry_if_exception_type(APITimeoutError) |
+                tenacity.retry_if_exception(lambda e: isinstance(e, APIStatusError) and e.status_code >= 500)
+            ),
+            before_sleep=tenacity.before_sleep_log(self.logger, logging.WARNING),
+            reraise=True
+        )
+        self.logger.info(
+            f"LLMClient retry decorator configured: "
+            f"max_retries={self.max_retries}, initial_backoff={self.initial_backoff}s, max_backoff={self.max_backoff}s"
+        )
+
         # Initialize encoder using centralized utility
         self.encoder = get_encoder(self.model)
 
@@ -102,8 +127,12 @@ class LLMClient:
                 for request_item in requests_data:
                     tmp_f.write(json.dumps(request_item) + "\n")
             with open(temp_file_path, "rb") as f_rb:
-                batch_input_file = self.client.files.create(file=f_rb,
-                                                            purpose="batch")
+                @self.retry_decorator
+                def _do_upload():
+                    self.logger.info(f"Uploading batch input file: {temp_file_path} for {base_filename_for_tagging}")
+                    return self.client.files.create(file=f_rb, purpose="batch")
+                batch_input_file = _do_upload()
+            self.logger.info(f"Successfully uploaded batch input file {batch_input_file.id} for {base_filename_for_tagging}")
             return batch_input_file.id
         finally:
             if temp_file_path and os.path.exists(temp_file_path):
@@ -114,15 +143,31 @@ class LLMClient:
         console.print(
             f"Creating batch job for {source_filename} with file ID: {input_file_id}"
         )
-        batch_job = self.client.batches.create(
-            input_file_id=input_file_id,
-            endpoint=self.endpoint,
-            completion_window="24h",
-            metadata={"source_file": source_filename})
+        @self.retry_decorator
+        def _create_batch_job():
+            self.logger.info(f"Attempting to create batch job for input_file_id: {input_file_id}")
+            return self.client.batches.create(
+                input_file_id=input_file_id,
+                endpoint=self.endpoint,
+                completion_window="24h",
+                metadata={"source_file": source_filename}
+            )
+        batch_job = _create_batch_job()
+        self.logger.info(f"Batch job {batch_job.id} created successfully for {source_filename}.")
+
         last_status = None
         terminal_statuses = ["completed", "failed", "expired", "cancelled"]
+        
+        @self.retry_decorator # Decorate the retrieve call
+        def _retrieve_batch_status(job_id):
+            self.logger.debug(f"Attempting to retrieve status for batch job: {job_id}")
+            return self.client.batches.retrieve(job_id)
+
+        last_status = None
+        terminal_statuses = ["completed", "failed", "expired", "cancelled"]
+        
         while True:
-            retrieved_batch = self.client.batches.retrieve(batch_job.id)
+            retrieved_batch = _retrieve_batch_status(batch_job.id) # Call moved inside the main polling loop
             status = retrieved_batch.status
             status_line = f"[{datetime.now():%y/%m/%d %H:%M:%S}] INFO     Batch job {batch_job.id} status: {status}"
             if status not in terminal_statuses:
@@ -143,7 +188,12 @@ class LLMClient:
         """Parses the batch output file and returns a map of custom_id to results."""
         item_results_map = {}
         try:
-            file_response = self.client.files.content(output_file_id)
+            @self.retry_decorator
+            def _get_file_content():
+                self.logger.info(f"Attempting to retrieve content for output file ID: {output_file_id}")
+                return self.client.files.content(output_file_id)
+            
+            file_response = _get_file_content()
             output_data = file_response.text
             for line in output_data.strip().splitlines():
                 item = json.loads(line)
@@ -192,7 +242,13 @@ class LLMClient:
     def _llm_retrieve_batch_error_file(self, error_file_id):
         """Retrieves and logs the content of a batch error file."""
         try:
-            error_file_content = self.client.files.content(error_file_id).text
+            @self.retry_decorator
+            def _get_error_file_content():
+                self.logger.info(f"Attempting to retrieve content for error file ID: {error_file_id}")
+                return self.client.files.content(error_file_id)
+
+            error_file_response = _get_error_file_content()
+            error_file_content = error_file_response.text
             self.logger.info(
                 f"Batch Error File Content ({error_file_id}):\n{error_file_content[:1000]}..."
             )

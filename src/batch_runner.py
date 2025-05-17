@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional, Tuple
 import datetime
 import logging
 import sys
+import tempfile # Added for temporary reprocessing file
+import uuid # Added for unique temp file names
 
 import pandas as pd
 
@@ -47,7 +49,7 @@ def get_log_dirs(args) -> Tuple[Path, Path]:
     return log_dir, archive_dir
 
 
-def process_file(filepath_str: str, output_dir_str: str, config: Dict[str, Any]) -> bool:
+def process_file(filepath_str: str, output_dir_str: str, config: Dict[str, Any], args: Any) -> bool:
     """
     Processes a single file using the new file_processor.process_file_wrapper.
     This function now acts as a simpler interface to the core processing logic.
@@ -65,7 +67,7 @@ def process_file(filepath_str: str, output_dir_str: str, config: Dict[str, Any])
     logger.info(f"Initiating processing for: {filepath.name} -> {output_dir}")
 
     try:
-        return _process_file_with_config(config, filepath, output_dir)
+        return _process_file_with_config(config, filepath, output_dir, args)
     except FileNotFoundError:
         logger.error(
             f"[ERROR] Input file not found: {filepath}. Please verify the file exists and you have read permissions."
@@ -98,7 +100,8 @@ def process_file(filepath_str: str, output_dir_str: str, config: Dict[str, Any])
 def _process_file_with_config(
     config: Dict[str, Any], 
     filepath: Path, 
-    output_dir: Path
+    output_dir: Path,
+    args: Any # For is_reprocessing_run flag
 ) -> bool:
     """Process a file with the given configuration.
     
@@ -135,7 +138,8 @@ def _process_file_with_config(
         system_prompt_content=system_prompt_content,
         response_field=response_field,
         encoder=encoder,
-        token_limit=token_limit
+        token_limit=token_limit,
+        is_reprocessing_run=args.is_reprocessing_run
     )
 
     if success:
@@ -216,20 +220,116 @@ def print_token_cost_summary(summary_file_path: Optional[str] = None,
 
 
 def run_batch_processing(args: Any, config: Dict[str, Any]):
-    """
-    Main function to run batch processing based on parsed arguments and configuration.
+    """Main function to run batch processing based on parsed arguments and configuration.
     Orchestrates helpers for file resolution, directory setup, processing, and reporting.
     """
-    log_dir, archive_dir = get_log_dirs(args)
-    prune_logs_if_needed(log_dir, archive_dir, config=config)
-    files_to_process = _resolve_files_to_process(args)
-    if not files_to_process:
-        return
-    output_directory = _setup_output_directory(args)
-    if output_directory is None:
-        return
-    result = _process_files(files_to_process, output_directory, config)
-    _report_batch_results(result, files_to_process, args, log_dir, config)
+    args.is_reprocessing_run = False # Initialize flag
+    temp_reprocessing_input_path = None # To store path for cleanup
+
+    # --- Reprocessing Setup ---
+    if hasattr(args, 'reprocess_from') and args.reprocess_from:
+        logger.info("--- Reprocessing Mode Activated ---")
+        args.is_reprocessing_run = True
+        try:
+            # 1. Load previous output and original input
+            logger.info(f"Loading previous output from: {args.reprocess_from}")
+            previous_output_df = load_data(args.reprocess_from)
+            if previous_output_df is None or previous_output_df.empty:
+                logger.error(f"Failed to load or empty previous output file: {args.reprocess_from}. Aborting reprocessing.")
+                return
+
+            logger.info(f"Loading original input from: {args.reprocess_input_file}")
+            original_input_df = load_data(args.reprocess_input_file)
+            if original_input_df is None or original_input_df.empty:
+                logger.error(f"Failed to load or empty original input file: {args.reprocess_input_file}. Aborting reprocessing.")
+                return
+
+            # 2. Identify failed items
+            response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD) # Match config_loader.py and file_processor.py
+            id_column = args.original_input_id_column
+
+            if response_field not in previous_output_df.columns:
+                logger.error(f"Response field '{response_field}' not found in previous output file. Check config and file. Aborting.")
+                return
+            if id_column not in previous_output_df.columns:
+                logger.error(f"ID column '{id_column}' not found in previous output file. Aborting.")
+                return
+            if id_column not in original_input_df.columns:
+                logger.error(f"ID column '{id_column}' not found in original input file. Aborting.")
+                return
+
+            failed_items_output_df = previous_output_df[
+                previous_output_df[response_field].astype(str).str.startswith("Error:", na=False)
+            ]
+
+            if failed_items_output_df.empty:
+                logger.info("No items marked with 'Error:' in the response field found in the previous output. Nothing to reprocess.")
+                return
+            
+            failed_ids = failed_items_output_df[id_column].unique().tolist()
+            logger.info(f"Found {len(failed_ids)} unique items to reprocess based on ID column '{id_column}'.")
+
+            items_to_reprocess_df = original_input_df[original_input_df[id_column].isin(failed_ids)]
+            
+            if items_to_reprocess_df.empty:
+                logger.warning(f"No items from the original input file matched the failed IDs. IDs found: {failed_ids}. Double-check ID column and files.")
+                return
+
+            original_ext = Path(args.reprocess_input_file).suffix
+            if not original_ext in ['.csv', '.jsonl', '.json']:
+                 logger.warning(f"Original input file {args.reprocess_input_file} has an unsupported extension for reprocessing output. Defaulting to .csv for temp file.")
+                 original_ext = '.csv'
+
+            temp_dir = Path(tempfile.gettempdir()) / "batchgrader_reprocessing"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            # Store Path object for temp_reprocessing_input_path
+            temp_reprocessing_input_path = temp_dir / f"reprocessing_input_{uuid.uuid4().hex}{original_ext}"
+            
+            save_data(items_to_reprocess_df, str(temp_reprocessing_input_path))
+            logger.info(f"Prepared {len(items_to_reprocess_df)} items for reprocessing into temporary file: {temp_reprocessing_input_path}")
+
+            args.input_file = str(temp_reprocessing_input_path)
+            args.input_dir = None 
+            logger.info(f"BatchGrader will now process only the failed items from: {args.input_file}")
+
+        except Exception as e:
+            logger.error(f"Error during reprocessing setup: {e}", exc_info=True)
+            if temp_reprocessing_input_path and temp_reprocessing_input_path.exists():
+                try:
+                    temp_reprocessing_input_path.unlink()
+                    logger.info(f"Cleaned up temporary reprocessing file due to setup error: {temp_reprocessing_input_path}")
+                except OSError as e_clean:
+                    logger.warning(f"Could not clean up temp file {temp_reprocessing_input_path} after setup error: {e_clean}")
+            return
+    
+    # --- Main Processing Logic (wrapped for cleanup) ---
+    try:
+        log_dir, archive_dir = get_log_dirs(args)
+        prune_logs_if_needed(log_dir, archive_dir, config=config)
+
+        # Resolve files to process (this might have been updated by reprocessing logic)
+        files_to_process = _resolve_files_to_process(args)
+        if not files_to_process:
+            # If it was a reprocessing run that resulted in no files, it's not an error, just nothing to do.
+            # If it was a normal run, or reprocessing setup failed to produce a temp file, then it's potentially an issue, handled by _resolve_files_to_process logs.
+            logger.info("No files to process at this stage.")
+            return 
+
+        output_directory = _setup_output_directory(args)
+        if output_directory is None:
+            logger.error("Failed to setup output directory. Aborting batch processing.")
+            return
+
+        processing_summary = _process_files(files_to_process, output_directory, config)
+        _report_batch_results(processing_summary, files_to_process, args, log_dir, config)
+    finally:
+        # Cleanup temporary reprocessing file if it was created
+        if args.is_reprocessing_run and temp_reprocessing_input_path and Path(temp_reprocessing_input_path).exists():
+            try:
+                Path(temp_reprocessing_input_path).unlink()
+                logger.info(f"Successfully cleaned up temporary reprocessing file: {temp_reprocessing_input_path}")
+            except OSError as e:
+                logger.warning(f"Could not clean up temporary reprocessing file {temp_reprocessing_input_path}: {e}")
 
 
 def _resolve_files_to_process(args) -> list:
@@ -282,7 +382,7 @@ def _process_files(files_to_process: list, output_directory: Path, config: dict)
         filepath = Path(filepath_str)
         logger.info(f"\n--- Starting processing for: {filepath.name} (Size: {filepath.stat().st_size:,} bytes) ---")
         try:
-            success = process_file(str(filepath), str(output_directory), config)
+            success = process_file(str(filepath), str(output_directory), config, args)
             if success:
                 processed_files_count += 1
             else:
@@ -415,7 +515,9 @@ def run_count_mode(args: Any, config: Dict[str, Any]):
                 system_prompt_content,
                 response_field,
                 encoder,
-                token_limit=sys.maxsize)
+                token_limit=sys.maxsize,
+                filepath=filepath_str  # Pass the original filepath
+            )
 
             if token_stats:  # If token_stats were successfully calculated
                 logger.info(f"Token statistics for {filepath.name}:")

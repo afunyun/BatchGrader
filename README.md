@@ -2,10 +2,10 @@
 
 ## Recent Changes
 
+- **Version 0.6.0.3** (2025-05-17): Major release! Core batch processing and evaluation functionality is robust, with 86%+ test coverage. Ready for broader use. All major features work and the system is no longer "embarrassing" for public use.
 - **Version 0.5.9** (2025-05-16): Completed test coverage improvements across multiple modules. 100% coverage for several important modules, and near-perfect coverage for several other modules. All tests now running with pytest.
 - **Version 0.5.8.3** (2025-05-16): Added comprehensive tests for the `input_splitter` module ([`src/input_splitter.py`](src/input_splitter.py:1)), covering various file types, splitting strategies, edge cases, and error handling. Test file created at [`tests/test_input_splitter.py`](tests/test_input_splitter.py).
 - **Version 0.5.8.1** (2025-05-12): Fixed project path resolution and config file handling issues.
-- **Version 0.5.8** (2025-05-01): Fixed all test failures and improved code reliability.
 
 ## Overview
 
@@ -26,9 +26,12 @@ All configuration is managed via simple YAML.
 ### 🚧 Current TODO / Action Items
 
 - **Support richer evaluation outputs:**
+  **Unofficially implemented by accident**
+  It is fully possible to run the grader and process outputs of arbitrary length, I just personally needed a numerical rating. It should handle it without issue.
+
+- **True Async Processing:**
   **IN PROGRESS**
-  Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
-  (Probably already works tbh, just wary of saying you can do this without actually trying it.)
+  Allow for using the terminal interface while job is running - check status etc
 
 ---
 
@@ -326,48 +329,101 @@ token_limit: 2_000_000 #change to whatever your limit is
 BatchGrader/
 ├── config/
 │   ├── config.yaml
-│   └── prompts.yaml
+│   ├── config.yaml.example
+│   ├── prompts.yaml
+│   └── prompts.yaml.example
 ├── docs/
+│   ├── BATCH_API_REFERENCE.md
+│   ├── CHANGELOG.md
+│   ├── code_review.md
+│   ├── codebase_best_practices.md
+│   ├── diagramsLULE.md
 │   ├── pricing.csv
-│   └── scratchpad.md
+│   ├── scratchpad.md
+│   ├── testing_info.md
+│   └── completed_reviews_old_docs/
 ├── examples/
+│   ├── afunyun_examples.txt
 │   └── examples.txt
 ├── input/
-│   ├── _chunked/          # Auto-generated chunked input files (.keep for dir presence)
-│   └── ... (your input files)
+│   ├── .keep
+│   ├── _chunked/                # Auto-generated chunked input files
+│   └── afunyun_dataset.csv      # Example dataset
 ├── output/
-│   ├── logs/              # Persistent logs (.keep present)
-│   └── ... (results, token_usage_log.json)
-├── tests/
-│   ├── input/
-│   ├── output/
-│   └── logs/              # Test run logs (.keep present)
+│   ├── batch_results/           # Batch job results
+│   ├── logs/                    # Persistent logs (.keep present)
+│   ├── token_usage_events.jsonl # Token usage event log
+│   └── token_usage_log.json     # Token usage summary
 ├── src/
-│   ├── batch_job.py       # Job abstraction for concurrent processing
-│   ├── batch_runner.py    # Main entry point & orchestration
-│   ├── cli.py             # Command-line interface and argument parsing
-│   ├── config_loader.py   # Loads config & defaults
-│   ├── constants.py       # Central constants repository
-│   ├── cost_estimator.py  # Cost estimation logic
-│   ├── data_loader.py     # Reads/writes CSV/JSON/JSONL
-│   ├── evaluator.py       # Prompt template mgmt
-│   ├── file_processor.py  # Unified file processing abstraction
-│   ├── file_utils.py      # File/directory helpers
-│   ├── input_splitter.py  # Utility for input splitting by token limit
-│   ├── llm_client.py      # OpenAI Batch API client
-│   ├── llm_utils.py       # LLM utility functions
-│   ├── log_utils.py       # Log pruning/archiving
-│   ├── logger.py          # Modular logging utility
-│   ├── prompt_utils.py    # Prompt handling utilities
-│   ├── rich_display.py    # Rich CLI live tables
-│   ├── token_tracker.py   # Tracks API token usage
-│   ├── token_utils.py     # Token counting/validation utilities
-│   └── utils.py           # General utility functions
-├── requirements.txt
+│   ├── __init__.py
+│   ├── batch_job.py
+│   ├── batch_runner.py
+│   ├── cli.py
+│   ├── config_loader.py
+│   ├── constants.py
+│   ├── cost_estimator.py
+│   ├── data_loader.py
+│   ├── evaluator.py
+│   ├── exceptions.py
+│   ├── file_processor.py
+│   ├── file_utils.py
+│   ├── input_splitter.py
+│   ├── llm_client.py
+│   ├── llm_utils.py
+│   ├── log_utils.py
+│   ├── logger.py
+│   ├── output/                  # Output helpers (if present)
+│   ├── prompt_utils.py
+│   ├── rich_display.py
+│   ├── token_tracker.py
+│   ├── token_utils.py
+│   └── utils.py
+├── tests/
+│   ├── __init__.py
+│   ├── config/
+│   ├── conftest.py
+│   ├── input/
+│   ├── logs/
+│   ├── output/
+│   ├── run_all_tests.py
+│   ├── small_utilities/
+│   ├── test_batch_job.py
+│   ├── test_batch_runner.py
+│   ├── test_check_token_limits.py
+│   ├── test_cli.py
+│   ├── test_cli_additional.py
+│   ├── test_config_loader.py
+│   ├── test_constants.py
+│   ├── test_cost_estimator.py
+│   ├── test_data_loader.py
+│   ├── test_evaluator.py
+│   ├── test_exceptions.py
+│   ├── test_file_processor.py
+│   ├── test_file_processor_additional.py
+│   ├── test_file_processor_common_paths.py
+│   ├── test_file_utils.py
+│   ├── test_helpers.py
+│   ├── test_input_splitter.py
+│   ├── test_llm_client.py
+│   ├── test_llm_utils.py
+│   ├── test_log_utils.py
+│   ├── test_logger.py
+│   ├── test_prompt_utils.py
+│   ├── test_rich_display.py
+│   ├── test_splitter.py
+│   ├── test_token_tracker.py
+│   ├── test_token_utils.py
+│   └── test_utils.py
+├── .gitignore
+├── .markdownlint.json
+├── .markdownlintignore
+├── LICENSE
 ├── pyproject.toml
 ├── pytest.ini
 ├── README.md
-└── uv.lock
+├── release_tag.ps1
+├── requirements.txt
+├── uv.lock
 ```
 
 - All chunked input files are auto-stored in `input/_chunked/`.
