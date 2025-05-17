@@ -7,7 +7,7 @@ This module provides various utility functions used throughout the BatchGrader a
 import os
 import shutil
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import tiktoken
 from loguru import logger
@@ -24,11 +24,11 @@ def deep_merge_dicts(dict_a: Dict[Any, Any], dict_b: Dict[Any, Any]) -> Dict[Any
     """
     Recursively merge dict_b into dict_a and return the result.
     Values from dict_b take precedence over dict_a.
-    
+
     Args:
         dict_a: The base dictionary to merge into
         dict_b: The dictionary to merge from (takes precedence)
-        
+
     Returns:
         A new dictionary with values from both dictionaries merged
     """
@@ -66,19 +66,20 @@ def ensure_config_files_exist(log) -> None:
             src_example_path = config_dir / src_example_file
 
             if dest_path.exists():
-                log.debug("'%s' already exists. No action taken.", dest_path)
+                log.debug(f"'{dest_path}' already exists. No action taken.")
             else:
                 if src_example_path.exists():
                     shutil.copy2(src_example_path, dest_path)
-                    log.info("'%s' not found. Copied from '%s'.", dest_path, src_example_path)
+                    log.info(
+                        f"'{dest_path}' not found. Copied from '{src_example_path}'."
+                    )
                 else:
                     log.warning(
-                        "'%s' not found, and example file '%s' also missing. "
-                        "Cannot create default configuration.",
-                        dest_path, src_example_path
+                        f"'{dest_path}' not found, and example file '{src_example_path}' also missing. "
+                        "Cannot create default configuration."
                     )
     except (OSError, IOError) as error:
-        log.error("File system error while ensuring config files exist: %s", error)
+        log.error(f"File system error while ensuring config files exist: {error}")
 
 
 def get_encoder(model_name: Optional[str] = None) -> Optional[tiktoken.Encoding]:
@@ -100,5 +101,5 @@ def get_encoder(model_name: Optional[str] = None) -> Optional[tiktoken.Encoding]
             return tiktoken.encoding_for_model(model_name)
         return tiktoken.get_encoding("cl100k_base")
     except Exception as error:
-        logger.warning("Failed to initialize encoder: %s", error)
+        logger.warning(f"Failed to initialize encoder: {error}")
         return None

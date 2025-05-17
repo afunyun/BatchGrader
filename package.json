@@ -1,7 +1,9 @@
 {
   "dependencies": {
+    "loguru": "^0.0.1-security",
     "pandas": "^0.0.3",
     "pyyaml": "^0.0.1",
+    "tiktoken": "^1.0.21",
     "yaml": "^2.8.0"
   },
   "name": "BatchGrader",
