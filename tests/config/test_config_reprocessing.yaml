@@ -1,0 +1,6 @@
+openai_api_key: TEST_KEY_REPROCESS_SUCCESS
+openai_model_name: gpt-3.5-turbo
+response_field_name: evaluation
+global_token_limit: 500000
+input_columns_to_keep: custom_id text_content extra_col
+batch_api_endpoint: /v1/chat/completions

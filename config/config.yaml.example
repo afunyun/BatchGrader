@@ -1,36 +1,38 @@
-# Example BatchGrader config.yaml
-# Directory containing input files (CSV, JSON, or JSONL) to process
-input_dir: input
+# Example configuration file for BatchGrader
+# Copy this file to config.yaml and customize as needed
 
-# Directory where output files and logs will be saved
-output_dir: output
-
-# Name of the OpenAI model to use for batch processing
-openai_model_name: gpt-4o-mini-2024-07-18
-
-# How often (in seconds) to poll the Batch API for job completion
-poll_interval_seconds: 30
-
-# Maximum tokens allowed in each LLM response
+# Batch job settings
+max_simultaneous_batches: 2
+force_chunk_count: 0  # If >1, forcibly split input into this many chunks regardless of token limits
+halt_on_chunk_failure: true  # If true, aborts remaining chunks for a file if any chunk fails critically
+ poll_interval_seconds: 60
+poll_interval_seconds: 60
 max_tokens_per_response: 1000
-
-# Name of the field/column in your input data containing the text to evaluate
-response_field: assistant_content
-
-# API endpoint for submitting batch jobs (usually don't change)
+response_field: llm_response
 batch_api_endpoint: /v1/chat/completions
 
-# Path to the examples file used in prompts (relative to project root)
+# Retry settings for API calls (using Tenacity)
+retry_settings:
+max_retries: 5           # Maximum number of retry attempts
+initial_backoff_seconds: 1  # Initial delay before the first retry (in seconds)
+max_backoff_seconds: 60   # Maximum delay between retries (in seconds)
+# exponential_base: 2    # Multiplier for backoff (e.g., 1, 2, 4, 8 seconds if base is 2) - default is 2
+# jitter: true           # Adds random jitter to backoff times to avoid thundering herd - default is true
+input_dir: input
+output_dir: output
 examples_dir: examples/examples.txt
 
-# Maximum number of tokens allowed per day (set according to your OpenAI plan)
+# OpenAI API settings
+openai_model_name: gpt-4o-mini-2024-07-18
+# Replace with your API key or set via OPENAI_API_KEY environment variable
+# openai_api_key: YOUR_OPENAI_API_KEY_HERE
+
+# Token limits
 token_limit: 2000000
+split_token_limit: 500000  # Max tokens per split file
 
-# Maximum number of tokens per input file chunk (used for splitting large files)
-split_token_limit: 500000   
-
-# Maximum number of rows per input file chunk (optional; null means unlimited)
-split_row_limit: null       
+# Optional: Set a row limit for split files
+# split_row_limit: 10000
 
 # Maximum number of log files to keep before rotating/deleting old ones
 max_logs: 50

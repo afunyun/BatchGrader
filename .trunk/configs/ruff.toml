@@ -1,0 +1,58 @@
+# Base configuration
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "A",   # flake8-builtins
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "YTT", # flake8-2020
+    "FBT", # flake8-boolean-trap
+    "Q",   # flake8-quotes
+    "RUF", # Ruff-specific rules
+]
+
+# Ignore these rules
+ignore = [
+    "E501",  # Line too long - handled by formatter
+    "W503",  # Line break occurred before a binary operator
+    "W504",  # Line break after binary operator
+    "B008",  # Do not perform function calls in argument defaults
+    "B018",  # Useless expression
+]
+
+# Line length (for rules that respect it)
+line-length = 88
+
+# Allow autofix for all rules
+unfixable = []
+fixable = ["ALL"]
+
+# Specific rule configurations
+[flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"
+avoid-escape = true
+
+[isort]
+known-first-party = ["batchgrader"]
+combine-as-imports = true
+force-sort-within-sections = true
+force-wrap-aliases = true
+force-single-line = false
+include-trailing-comma = true
+line-length = 88
+multi-line-output = 3
+use-parentheses = true
+
+[pyupgrade]
+keep-runtime-typing = false
+
+# Per-file-ignores
+# Example: Ignore migrations and tests
+# "*/migrations/*.py" = ["E501", "F401"]
+# "tests/*" = ["S101"]

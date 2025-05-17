@@ -1,0 +1,173 @@
+"""
+Configuration loader for BatchGrader.
+
+This module handles loading and managing configuration settings from YAML files,
+merging them with default values, and ensuring necessary directories and files exist.
+"""
+
+import logging
+import os
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
+
+import yaml
+
+from batchgrader.constants import PROJECT_ROOT
+from batchgrader.utils import deep_merge_dicts
+from batchgrader.utils import ensure_config_files_exist
+
+logger = logging.getLogger(__name__)
+
+CONFIG_DIR = PROJECT_ROOT / "config"
+CONFIG_PATH = CONFIG_DIR / "config.yaml"
+PROMPTS_PATH = CONFIG_DIR / "prompts.yaml"
+
+DEFAULT_RETRY_SETTINGS = {
+    "max_retries": 5,
+    "initial_backoff_seconds": 1,
+    "max_backoff_seconds": 60,
+    # Tenacity defaults for exponential_base (2) and jitter (True) are generally good.
+    # These can be exposed here if more specific control is needed later.
+}
+
+DEFAULT_CONFIG = {
+    "max_simultaneous_batches":
+    # TESTING Number of parallel batch jobs per input file (concurrent chunk processing)
+    2,
+    "force_chunk_count":
+    # TESTING If >1, forcibly split input into this many chunks
+    # regardless of token limits (for speed)
+    0,
+    "halt_on_chunk_failure":
+    True,  # TESTING If True, aborts remaining chunks for a file if any chunk fails critically
+    "input_dir": "../input",
+    "output_dir": "../output",
+    "examples_dir": "../examples/examples.txt",
+    "openai_model_name": "gpt-4o-mini-2024-07-18",
+    # system will pull from environment variables FIRST if it's set there.
+    # openai_api_key: YOUR_OPENAI_API_KEY_HERE
+    "poll_interval_seconds": 60,
+    "max_tokens_per_response": 1000,
+    "response_field": "response",
+    "batch_api_endpoint": "/v1/chat/completions",
+    "retry_settings": DEFAULT_RETRY_SETTINGS,
+    "token_limit": 2_000_000,
+    "split_token_limit": 500_000,  # Max tokens per split file (default ~500k)
+    "split_row_limit":
+    None,  # Max rows per split file (optional, default: unlimited)
+}
+"""
+Event Dictionary (Table 1)
+-------------------------
+| Event Name                | Payload Schema                        | Description                         |
+|-------------------------- |---------------------------------------|-------------------------------------|
+| input_split_config_loaded | {token_limit:int, row_limit:int}      | Emitted when splitter loads config  |
+| file_split                | {input_file:str, output_files:list}   | Emitted when a file is split        |
+"""
+
+DEFAULT_EXAMPLES_TEXT = "This file would contain examples of the target style. If you want it to be used in the prompt, add it to the config.yaml file."
+
+DEFAULT_PROMPTS = {
+    "batch_evaluation_prompt":
+    ("You are an evaluator trying to determine the closeness of a response to a given style, examples of which will follow. Given the following examples, evaluate whether or not the response matches the target style.\n\n"
+     "Examples:\n{dynamic_examples}\n\n"
+     "Scoring should be as follows:\n"
+     "5 - Perfect match\n"
+     "4 - Very close\n"
+     "3 - Somewhat close\n"
+     "2 - Not close\n"
+     "1 - No match\n\n"
+     "Output only the numerical scores, one per line, in the same order as inputs."
+     ),
+    "batch_evaluation_prompt_generic":
+    ("You are an evaluator. Given the following message, rate its overall quality on a scale of 1 to 5.\n\n"
+     "The scale is as follows:\n"
+     "5 - Excellent\n"
+     "4 - Good\n"
+     "3 - Average\n"
+     "2 - Poor\n"
+     "1 - Very poor\n\n"
+     "Output only the numerical score."),
+}
+
+
+def ensure_config_files(logger):
+    """
+    Ensures dir structure is present and if not, creates a default one for input, output, and examples.
+    Also ensures config.yaml and prompts.yaml are created from .example files if missing.
+    """
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    input_dir = (PROJECT_ROOT / DEFAULT_CONFIG["input_dir"]).resolve()
+    output_dir = (PROJECT_ROOT / DEFAULT_CONFIG["output_dir"]).resolve()
+    examples_dir = (PROJECT_ROOT / DEFAULT_CONFIG["examples_dir"]).resolve()
+
+    input_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    examples_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    if not examples_dir.exists():
+        with open(examples_dir, "w", encoding="utf-8") as f:
+            f.write(DEFAULT_EXAMPLES_TEXT)
+        logger.info(f"Default examples file created at '{examples_dir}'.")
+
+    util_ensure_config_files_exist(logger)
+
+
+def is_examples_file_default(examples_path):
+    """
+    Checks if the examples file contains only the default text (i.e., not customized by the user).
+    """
+    try:
+        with open(examples_path, "r", encoding="utf-8") as file_handle:
+            content = file_handle.read().strip()
+        return content == DEFAULT_EXAMPLES_TEXT
+    except (IOError, OSError):
+        return True
+
+
+def load_config(config_path=None):
+    """
+    Loads the batch grading configuration from the specified config YAML file.
+
+    If config_path is None, loads from config/config.yaml. Auto-creates config,
+    prompts, & examples files with defaults if missing. Prefers environment
+    variable for API key since that's secure. Performs a DEEP MERGE of user
+    config over DEFAULT_CONFIG, so nested dictionaries are merged recursively
+    (not overwritten).
+
+    Args:
+        config_path: Path to the config file. If None, uses default location.
+
+    Returns:
+        dict: Configuration parameters.
+
+    Raises:
+        RuntimeError: If the config file is badly formatted or cannot be read.
+        ValueError: If the config file is not found.
+    """
+    ensure_config_files(logger)
+
+    config_path = CONFIG_PATH if config_path is None else Path(config_path)
+    if not config_path.exists():
+        raise ValueError(f"Config file not found: {config_path}")
+    try:
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            config = yaml.safe_load(config_file)
+        if config is None:
+            config = DEFAULT_CONFIG.copy()
+        else:
+            merged = deep_merge_dicts(DEFAULT_CONFIG, config)
+            config = merged
+            config.get("llm_score_column_name", "llm_score")
+
+    except yaml.YAMLError as yaml_error:
+        raise RuntimeError(
+            f"Error parsing YAML in config file {config_path}: {yaml_error}"
+        ) from yaml_error
+    except OSError as io_error:
+        raise RuntimeError(
+            f"I/O error reading config file {config_path}: {io_error}"
+        ) from io_error
+    if env_api_key := os.getenv("OPENAI_API_KEY"):
+        config["openai_api_key"] = env_api_key
+    return config

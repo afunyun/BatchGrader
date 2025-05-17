@@ -1,50 +1,10 @@
 # BatchGrader: Batch LLM Evaluation with OpenAI Batch API
 
-## Last updated: 2025-05-12
+## Recent Changes
 
-**0.4.5 (2025-05-12):**
-
-- Project version updated to 0.4.5. Continued fixes so cloned repos actually function without generating insanity
-
-**0.4.4 (2025-05-12):**
-
-- delete the batch_runner.py that was in proj root because that only worked locally with a hack & shouldn't have been in the public repo *facepalm*
-- update run instructions for clarity for this
-- fix the entire env setup in general as it got ultra screwy while updating things and we push to production it seems
-- fixed import in rich_display
-
-**0.4.3 (2025-05-12):**
-
-- Fixed pytest.ini_options not being read by pytest.
-
-**0.4.2 (2025-05-12):**
-
-- Fixed asyncio_default_fixture_loop_scope not being read by pytest.
-
-**0.4.1 (2025-05-11):**
-
-- Fixed tests returning None for vars and not knowing what dir they were in, that was rough.
-
-**0.4.0 (2025-05-11):**
-
-- Tightened token limits, reintroduced exception when examples file is missing, revamped test runner, unified file paths, updated & restructured docs.
-- No evidence of logger state being manually manipulated so no issues there.
-
-**0.3.3 (2025-05-11):**
-
-- Import Cleanup & CLI Table Fixes: nuked unused imports, pointed all test outputs properly at tests/output/, and swapped prints to console for RichJobTable live-updating wobbly progress bar. Forgot to give a version number so it gets a fake one 0.3.3.
-
-**0.3.2 (2025-05-11):**
-
-- Now blows up if pricing.csv is gone. System will now do a recursive deep-merge of configs instead of a shallow one so you don’t lose nested settings.
-
-**0.3.1 (2025-05-11):**
-
-- Chunking finally works and storage paths have been cleaned.
-
-**0.3.0 (2025-05-11):**
-
-- Ditched raw prints for rich console output with colors & emoji, added a summary table for jobs/tokens/cost, and beefed up logging.
+- **Version 0.6.1.0** (2025-05-17): Implemented reprocessing for failed items and automatic API call retries. See `docs/CHANGELOG.md` for details.
+- **Version 0.6.0.3** (2025-05-17): Major release! Core batch processing and evaluation functionality is robust, with 86%+ test coverage. Ready for broader use. All major features work and the system is no longer "embarrassing" for public use.
+- **Version 0.5.9** (2025-05-16): Completed test coverage improvements across multiple modules. 100% coverage for several important modules, and near-perfect coverage for several other modules. All tests now running with pytest.
 
 ## Overview
 
@@ -65,9 +25,12 @@ All configuration is managed via simple YAML.
 ### 🚧 Current TODO / Action Items
 
 - **Support richer evaluation outputs:**
+  **Unofficially implemented by accident**
+  It is fully possible to run the grader and process outputs of arbitrary length, I just personally needed a numerical rating. It should handle it without issue.
+
+- **True Async Processing:**
   **IN PROGRESS**
-  Honestly have only tried this with the format of a single number rating. Should allow free-form or multi-field LLM responses, and ensure downstream code can handle these without exploding.
-  (Probably already works tbh, just wary of saying you can do this without actually trying it.)
+  Allow for using the terminal interface while job is running - check status etc
 
 ---
 
@@ -76,42 +39,57 @@ All configuration is managed via simple YAML.
 **I am on Windows 11. I have not tested this on linux, but I have no reason to believe it wouldn't work just fine. You may need to modify the setup for bash rather than powershell.**
 
 1. **Prerequisites**
-    - Python 3.7+
-    - Recommended: `uv` (preferred for `requirements.txt`) or `pip`.
+
+   - Python 3.7+
+   - Recommended: `uv` (preferred for `requirements.txt`) or `pip`.
 
 2. **Virtual Environment (Recommended)**
-    - Clone the repo:
 
-        ```powershell
-        git clone https://github.com/afunyun/BatchGrader.git
-        cd BatchGrader
-        ```
+   - Clone the repo:
 
-    - "Optional but not running in a venv is asking for a world of hurt, promise" Sync and activate the virtual environment (exact script may vary based on your system):
+     ```powershell
+     git clone https://github.com/afunyun/BatchGrader.git
+     cd BatchGrader
+     ```
 
-        ```powershell
-        uv sync
-        .venv\Scripts\activate.ps1
-        ```
+   - "Optional but not running in a venv is asking for a world of hurt, promise" Sync and activate the virtual environment (exact script may vary based on your system):
 
-        If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length from every hair on their body. Please don't do that.
-    - **Dependency Management** (`uv` + `requirements.txt` is canonical)
-        - Uses `requirements.txt` (managed with `uv` or `pip`). `pyproject.toml` is for compatibility only and not actively maintained.
-        - **Installing dependencies:**
+     ```powershell
+     uv sync
+     .venv\Scripts\activate.ps1
+     ```
 
-            ```powershell
-            uv pip install -r requirements.txt
-            ```
+     If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length from every hair on their body. Please don't do that.
+
+   - **Dependency Management**
+
+     - The project uses `pyproject.toml` with Poetry for dependency management.
+     - For development, install with:
+
+       ```powershell
+       # Install in development mode with all dependencies
+       pip install -e ".[dev]"
+
+       # Or using uv (faster):
+       uv pip install -e "."
+       ```
+
+     - For production, use `requirements.txt`:
+
+       ```powershell
+       uv pip install -r requirements.txt
+       ```
 
 3. **Usage**
-    - Always make sure your `.venv` is active—if it's not, something *will* break, almost guaranteed.
-    - Rename `config/config.yaml.example` to `config/config.yaml` and fill in the values.
-      (If you get a config loading error, check that these files are in the expected `/config` location.)
-    - Then run:
 
-        ```powershell
-        python -m src.batch_runner [args]
-        ```
+   - Always make sure your `.venv` is active—if it's not, something _will_ break, almost guaranteed.
+   - Rename `config/config.yaml.example` to `config/config.yaml` and fill in the values.
+     (If you get a config loading error, check that these files are in the expected `/config` location.)
+   - Then run:
+
+     ```powershell
+     python -m src.batch_runner [args]
+     ```
 
 This of course is just to run the batch runner with nothing else. See below for more advanced usage.
 
@@ -215,11 +193,13 @@ If neither `--count-tokens` nor `--split-tokens` is specified, the system runs t
 ---
 
 1. **Prepare Input Data:**
+
    - Place your input files (CSV, JSON, or JSONL) in the `input/` directory.
    - Ensure your files contain the field specified by `response_field` in `config.yaml`.
    - Optionally, if you need to provide examples in the prompts, you may add examples.
 
 2. **Run the Batch Grader:**
+
    - Make sure you are in the BatchGrader directory.
 
    ```bash
@@ -260,6 +240,7 @@ token_limit: 2_000_000 #change to whatever your limit is
   The OpenAI docs I've provided are obviously static. I pulled them from the site on 5/10/2025; if it's any time after that, it may be horribly out of date. I recommend checking the link above.
 
 **Pricing as of 2025-05-10. Verify with OpenAI or docs/pricing.csv (update manually as needed).**
+
 <details>  
 <table>
   <thead>
@@ -346,44 +327,105 @@ token_limit: 2_000_000 #change to whatever your limit is
 BatchGrader/
 ├── config/
 │   ├── config.yaml
-│   └── prompts.yaml
+│   ├── config.yaml.example
+│   ├── prompts.yaml
+│   └── prompts.yaml.example
 ├── docs/
+│   ├── BATCH_API_REFERENCE.md
+│   ├── CHANGELOG.md
+│   ├── code_review.md
+│   ├── codebase_best_practices.md
+│   ├── diagramsLULE.md
 │   ├── pricing.csv
-│   └── scratchpad.md
+│   ├── scratchpad.md
+│   ├── testing_info.md
+│   └── completed_reviews_old_docs/
 ├── examples/
+│   ├── afunyun_examples.txt
 │   └── examples.txt
 ├── input/
-│   ├── _chunked/          # Auto-generated chunked input files (.keep for dir presence)
-│   └── ... (your input files)
+│   ├── .keep
+│   ├── _chunked/                # Auto-generated chunked input files
+│   └── afunyun_dataset.csv      # Example dataset
 ├── output/
-│   ├── logs/              # Persistent logs (.keep present)
-│   └── ... (results, token_usage_log.json)
-├── tests/
-│   ├── input/
-│   ├── output/
-│   └── logs/              # Test run logs (.keep present)
+│   ├── batch_results/           # Batch job results
+│   ├── logs/                    # Persistent logs (.keep present)
+│   ├── token_usage_events.jsonl # Token usage event log
+│   └── token_usage_log.json     # Token usage summary
 ├── src/
-│   ├── batch_runner.py         # Main entry point & CLI
-│   ├── config_loader.py        # Loads config & defaults
-│   ├── cost_estimator.py       # Cost estimation logic
-│   ├── data_loader.py          # Reads/writes CSV/JSON/JSONL
-│   ├── evaluator.py            # Prompt template mgmt
-│   ├── input_splitter.py       # Utility for input splitting by token limit
-│   ├── llm_client.py           # OpenAI Batch API client
-│   ├── logger.py               # Modular logging utility
-│   ├── log_utils.py            # Log pruning/archiving
-│   ├── file_utils.py           # File/directory helpers (e.g., prune_chunked_dir)
-│   ├── rich_display.py         # Rich CLI live tables
-│   ├── token_tracker.py        # Tracks API token usage
-│   └── __pycache__/
-├── requirements.txt
+│   ├── __init__.py
+│   ├── batch_job.py
+│   ├── batch_runner.py
+│   ├── cli.py
+│   ├── config_loader.py
+│   ├── constants.py
+│   ├── cost_estimator.py
+│   ├── data_loader.py
+│   ├── evaluator.py
+│   ├── exceptions.py
+│   ├── file_processor.py
+│   ├── file_utils.py
+│   ├── input_splitter.py
+│   ├── llm_client.py
+│   ├── llm_utils.py
+│   ├── log_utils.py
+│   ├── logger.py
+│   ├── output/                  # Output helpers (if present)
+│   ├── prompt_utils.py
+│   ├── rich_display.py
+│   ├── token_tracker.py
+│   ├── token_utils.py
+│   └── utils.py
+├── tests/
+│   ├── __init__.py
+│   ├── config/
+│   ├── conftest.py
+│   ├── input/
+│   ├── logs/
+│   ├── output/
+│   ├── run_all_tests.py
+│   ├── small_utilities/
+│   ├── test_batch_job.py
+│   ├── test_batch_runner.py
+│   ├── test_check_token_limits.py
+│   ├── test_cli.py
+│   ├── test_cli_additional.py
+│   ├── test_config_loader.py
+│   ├── test_constants.py
+│   ├── test_cost_estimator.py
+│   ├── test_data_loader.py
+│   ├── test_evaluator.py
+│   ├── test_exceptions.py
+│   ├── test_file_processor.py
+│   ├── test_file_processor_additional.py
+│   ├── test_file_processor_common_paths.py
+│   ├── test_file_utils.py
+│   ├── test_helpers.py
+│   ├── test_input_splitter.py
+│   ├── test_llm_client.py
+│   ├── test_llm_utils.py
+│   ├── test_log_utils.py
+│   ├── test_logger.py
+│   ├── test_prompt_utils.py
+│   ├── test_rich_display.py
+│   ├── test_splitter.py
+│   ├── test_token_tracker.py
+│   ├── test_token_utils.py
+│   └── test_utils.py
+├── .gitignore
+├── .markdownlint.json
+├── .markdownlintignore
+├── LICENSE
 ├── pyproject.toml
+├── pytest.ini
 ├── README.md
-└── ...
+├── release_tag.ps1
+├── requirements.txt
+├── uv.lock
 ```
 
 - All chunked input files are auto-stored in `input/_chunked/`.
 - All logs go to `output/logs/` (production) or `tests/logs/` (tests), with `.keep` files to ensure directory presence.
 - Directory names are singular and standardized.
 
-![architecture](docs\diagram_dark_bg.png)
+![architecture](docs/diagram_dark_bg.png)

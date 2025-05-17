@@ -10,89 +10,144 @@ Covers:
 
 Test data is loaded from tests/input/ and temp files are written to tests/output/.
 """
+
 import os
-import sys
 import shutil
-import tempfile
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import pytest
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from src.input_splitter import split_file_by_token_limit
-from src.utils import deep_merge_dicts
 
-TEST_INPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'input'))
-TEST_OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'output'))
+from batchgrader.constants import DEFAULT_PRICING_CSV_PATH
+from batchgrader.input_splitter import FileNotFoundError, split_file_by_token_limit
+from batchgrader.token_tracker import _load_pricing
+from batchgrader.utils import deep_merge_dicts
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+TEST_INPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "input"))
+TEST_OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "output"))
+
+
 def dummy_token_counter(row):
-    return len(str(row.get('text', ''))) if hasattr(row, 'get') else len(str(row))
+    return len(str(row.get("text", ""))) if hasattr(row, "get") else len(str(row))
 
-@pytest.fixture(scope='function')
+
+@pytest.fixture(scope="function")
 def cleanup_output():
     os.makedirs(TEST_OUTPUT_DIR, exist_ok=True)
     yield
     shutil.rmtree(TEST_OUTPUT_DIR)
     os.makedirs(TEST_OUTPUT_DIR, exist_ok=True)
+
+
 def test_force_chunk_count_splits_evenly(cleanup_output):
-    df = pd.DataFrame({'text': [f"row {i}" for i in range(10)]})
-    tmp = os.path.join(TEST_OUTPUT_DIR, 'force_chunk.csv')
+    df = pd.DataFrame({"text": [f"row {i}" for i in range(10)]})
+    tmp = os.path.join(TEST_OUTPUT_DIR, "force_chunk.csv")
     df.to_csv(tmp, index=False)
-    files, tokens = split_file_by_token_limit(
-        tmp, token_limit=100, count_tokens_fn=dummy_token_counter,
-        force_chunk_count=3, output_dir=TEST_OUTPUT_DIR)
+
+    # Create a mock logger that won't cause TypeError with level comparison
+    mock_logger = MagicMock()
+
+    with patch("batchgrader.input_splitter.logger", mock_logger):
+        files, tokens = split_file_by_token_limit(
+            tmp,
+            token_limit=100,
+            count_tokens_fn=dummy_token_counter,
+            force_chunk_count=3,
+            output_dir=TEST_OUTPUT_DIR,
+        )
     assert len(files) == 3
     total_rows = sum(pd.read_csv(f).shape[0] for f in files)
     assert total_rows == 10
+
+
 def test_token_chunking_respects_limit(cleanup_output):
-    df = pd.DataFrame({'text': ['a'*10]*12})
-    tmp = os.path.join(TEST_OUTPUT_DIR, 'tokchunk.csv')
+    from unittest.mock import MagicMock, patch
+
+    from batchgrader.input_splitter import split_file_by_token_limit
+    from tests.test_helpers import TEST_OUTPUT_DIR, dummy_token_counter
+
+    df = pd.DataFrame({"text": ["a" * 10] * 12})
+    tmp = os.path.join(TEST_OUTPUT_DIR, "tokchunk.csv")
     df.to_csv(tmp, index=False)
-    files, tokens = split_file_by_token_limit(
-        tmp, token_limit=30, count_tokens_fn=dummy_token_counter,
-        output_dir=TEST_OUTPUT_DIR)
-    for t in tokens:
-        assert t <= 30
+    mock_logger = MagicMock()
+    with patch("batchgrader.input_splitter.logger", mock_logger):
+        files, tokens = split_file_by_token_limit(
+            tmp,
+            token_limit=30,
+            count_tokens_fn=dummy_token_counter,
+            output_dir=TEST_OUTPUT_DIR,
+        )
+    assert all(token_count <= 30 for token_count in tokens)
     all_rows = sum(pd.read_csv(f).shape[0] for f in files)
     assert all_rows == 12
+
+
 def test_force_chunk_count_warns_over_token(monkeypatch, cleanup_output):
-    df = pd.DataFrame({'text': ['x'*50]*5})
-    tmp = os.path.join(TEST_OUTPUT_DIR, 'overchunk.csv')
+    df = pd.DataFrame({"text": ["x" * 50] * 5})
+    tmp = os.path.join(TEST_OUTPUT_DIR, "overchunk.csv")
     df.to_csv(tmp, index=False)
     warnings = []
+
     def fake_logger():
+
         class L:
+
             def warning(self, msg):
                 warnings.append(msg)
+
             def event(self, msg):
                 pass
+
+            def debug(self, msg):
+                pass
+
+            def info(self, msg):
+                pass
+
+            def error(self, msg):
+                pass
+
         return L()
+
     files, tokens = split_file_by_token_limit(
-        tmp, token_limit=100, count_tokens_fn=dummy_token_counter,
-        force_chunk_count=2, output_dir=TEST_OUTPUT_DIR, logger=fake_logger())
-    assert any('exceeds token limit' in w for w in warnings)
+        tmp,
+        token_limit=100,
+        count_tokens_fn=dummy_token_counter,
+        force_chunk_count=2,
+        output_dir=TEST_OUTPUT_DIR,
+        logger_override=fake_logger(),
+    )
+    assert any("exceeds token limit" in w for w in warnings)
+
+
 def test_deep_merge_dicts():
-    a = {'a': 1, 'b': {'c': 2, 'd': 3}}
-    b = {'b': {'d': 4, 'e': 5}, 'f': 6}
+    a = {"a": 1, "b": {"c": 2, "d": 3}}
+    b = {"b": {"d": 4, "e": 5}, "f": 6}
     merged = deep_merge_dicts(a, b)
-    assert merged['b']['c'] == 2
-    assert merged['b']['d'] == 4
-    assert merged['b']['e'] == 5
-    assert merged['f'] == 6
+    assert merged["b"]["c"] == 2
+    assert merged["b"]["d"] == 4
+    assert merged["b"]["e"] == 5
+    assert merged["f"] == 6
+
+
 def test_examples_file_check(tmp_path):
-    from src.config_loader import is_examples_file_default, DEFAULT_EXAMPLES_TEXT
-    p = tmp_path / 'examples.txt'
+    from batchgrader.config_loader import (
+        DEFAULT_EXAMPLES_TEXT,
+        is_examples_file_default,
+    )
+
+    p = tmp_path / "examples.txt"
     p.write_text(DEFAULT_EXAMPLES_TEXT)
     assert is_examples_file_default(str(p))
-    p.write_text('not default')
+    p.write_text("not default")
     assert not is_examples_file_default(str(p))
+
+
 def test_pricing_csv_error(monkeypatch):
-    from src.token_tracker import _load_pricing, PRICING_CSV_PATH
-    if os.path.exists(PRICING_CSV_PATH):
-        os.rename(PRICING_CSV_PATH, PRICING_CSV_PATH+'.bak')
-    try:
-        try:
-            _ = _load_pricing()
-            assert False, "Should raise FileNotFoundError"
-        except FileNotFoundError:
-            pass
-    finally:
-        if os.path.exists(PRICING_CSV_PATH+'.bak'):
-            os.rename(PRICING_CSV_PATH+'.bak', PRICING_CSV_PATH)
+    monkeypatch.setattr(Path, "exists", lambda self: False)
+    with pytest.raises(FileNotFoundError):
+        _load_pricing(DEFAULT_PRICING_CSV_PATH)

@@ -1,15 +1,33 @@
-# Example BatchGrader prompts.yaml
+# Example prompts file for BatchGrader
+# Copy this file to prompts.yaml and customize as needed
+
+# Evaluation prompt for comparing responses to examples
 batch_evaluation_prompt: |
-  Please evaluate the following text and provide a score from 1 to 10 based on the provided examples.
+  You are an evaluator trying to determine the closeness of a response to a given style, 
+  examples of which will follow. Given the following examples, evaluate whether or not 
+  the response matches the target style.
+
+  Examples:
   {dynamic_examples}
-  Text: {input}
-  Score:
+
+  Scoring should be as follows:
+  5 - Perfect match
+  4 - Very close
+  3 - Somewhat close
+  2 - Not close
+  1 - No match
+
+  Output only the numerical scores, one per line, in the same order as inputs.
+
+# Generic evaluation prompt when no examples are provided
 batch_evaluation_prompt_generic: |
   You are an evaluator. Given the following message, rate its overall quality on a scale of 1 to 5.
+
   The scale is as follows:
   5 - Excellent
   4 - Good
   3 - Average
   2 - Poor
   1 - Very poor
+
   Output only the numerical score.
