@@ -36,14 +36,14 @@ def main():
     )
 
     # Input arguments
-    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group = parser.add_mutually_exclusive_group(required=False)
     input_group.add_argument("--input-file",
                              type=str,
                              help="Path to a single input file to process.")
     input_group.add_argument(
         "--input-dir",
         type=str,
-        help="Path to a directory containing input files to process.")
+        help="Path to a directory containing input files to process. If neither --input-file nor --input-dir is specified, the CLI will use the default input directory (input/) if it contains files.")
 
     # Output arguments
     parser.add_argument(
@@ -89,6 +89,17 @@ def main():
 
     args = parser.parse_args()
 
+    # Default to input/ directory if neither input-file nor input-dir is provided
+    if not args.input_file and not args.input_dir:
+        from src.constants import PROJECT_ROOT as DYNAMIC_PROJECT_ROOT
+        default_input_dir = DYNAMIC_PROJECT_ROOT / 'input'
+        if default_input_dir.exists() and any(default_input_dir.iterdir()):
+            args.input_dir = str(default_input_dir)
+            logger.info(f"No --input-file or --input-dir specified. Using default input directory: {args.input_dir}")
+        else:
+            logger.error("No --input-file or --input-dir specified, and the default input directory (input/) is missing or empty.")
+            sys.exit(2)
+
     # Load configuration
     try:
         config = load_config(
@@ -98,13 +109,11 @@ def main():
         )
     except FileNotFoundError:
         logger.error(
-            f"Configuration file not found: {args.config_file}. Using default configuration embedded in code."
-        )
+            f"Configuration file not found: {args.config_file}. Using default configuration embedded in code.")
         config = {}  # Proceed with minimal/default config if file not found
     except ValueError as e:
         logger.error(
-            f"Error loading configuration: {e}. Using default configuration embedded in code."
-        )
+            f"Error loading configuration: {e}. Using default configuration embedded in code.")
         config = {}
 
     # --- Pass to batch_runner ---

@@ -61,6 +61,7 @@ from src.exceptions import (
     OutputDirectoryError,
     TokenLimitError,
 )
+
 logger = logging.getLogger(__name__)
 
 # Type variable for DataFrame-like objects
@@ -153,7 +154,8 @@ def check_token_limits(
         error_msg = "response_field must be a non-empty string"
         logger.error(error_msg)
         if raise_on_error:
-            raise ValueError(error_msg) # Consistent with other validation errors
+            raise ValueError(
+                error_msg)  # Consistent with other validation errors
         return False, {}
 
     if response_field not in df.columns:
@@ -193,15 +195,15 @@ def check_token_limits(
 
         is_under_limit = token_stats['total'] <= token_limit
 
-        logger.info(f"[TOKEN COUNT] Total: {int(token_stats['total'])}, "
-                    f"Avg: {token_stats['average']:.1f}, "
-                    f"Max: {int(token_stats['max'])}")
+        logger.debug(f"[TOKEN COUNT] Total: {int(token_stats['total'])}, "
+                     f"Avg: {token_stats['average']:.1f}, "
+                     f"Max: {int(token_stats['max'])}")
 
         if not is_under_limit:
             error_msg = (
                 f"Token limit exceeded: {int(token_stats['total'])} > {token_limit}. "
                 "Please reduce your batch size or check your usage.")
-            logger.error(f"[ERROR] {error_msg}")
+            logger.debug(f"[ERROR] {error_msg}")
             if raise_on_error:
                 raise ValueError(error_msg)
 
@@ -440,7 +442,8 @@ def process_file_common(
                         response_field_name=response_field,
                         base_filename_for_tagging=os.path.basename(filepath))
                 except Exception as batch_exc:
-                    raise APIError(f"Batch job failed for {filepath}: {batch_exc}")
+                    raise APIError(
+                        f"Batch job failed for {filepath}: {batch_exc}")
 
         # Handle errors in results
         if df_with_results is not None:
@@ -527,9 +530,116 @@ def process_file_wrapper(filepath: str, output_dir: str, config: Dict[str,
 
         return False
 
-    except (FileNotFoundError, FileFormatError, DataValidationError,
-            TokenLimitError, APIError, OutputDirectoryError,
-            FilePermissionError) as e:
+    except TokenLimitError as e:
+        logger.debug(f"[ERROR] {str(e)}")
+        # User-facing message (console)
+        logger.info(
+            "The file exceeds the token limit. Would you like to automatically split it into smaller chunks and process them? (y/n)"
+        )
+        logger.info(
+            "(Will proceed automatically after 30 seconds if no response)")
+
+        # Setup timeout for input
+        import threading
+        import time
+
+        user_response = None
+        input_timeout = False
+
+        def get_input():
+            nonlocal user_response
+            try:
+                user_response = input()
+            except EOFError:
+                # Handle EOFError gracefully
+                pass
+
+        # Start input thread
+        input_thread = threading.Thread(target=get_input)
+        input_thread.daemon = True
+        input_thread.start()
+
+        # Wait for input with timeout
+        input_thread.join(timeout=30)
+
+        # Check if we got a response or timed out
+        if input_thread.is_alive():
+            # Timeout occurred
+            logger.info(
+                "No response received within 30 seconds. Proceeding with automatic chunking."
+            )
+            proceed_with_chunking = True
+        else:
+            # Got a response
+            if user_response is not None and user_response.lower() in [
+                    'n', 'no'
+            ]:
+                logger.info("User chose not to split the file. Aborting.")
+                return False
+            else:
+                # Default to yes for any other response or if input failed
+                logger.info("Proceeding with automatic chunking.")
+                proceed_with_chunking = True
+
+        logger.info(f"Splitting file {filepath} into chunks...")
+
+        # Get the split token limit from config
+        split_token_limit = config.get('split_token_limit',
+                                       DEFAULT_SPLIT_TOKEN_LIMIT)
+
+        # Get the model name for encoding
+        model_name = config.get('openai_model_name', DEFAULT_MODEL)
+
+        # Get API key prefix for tracking
+        api_key_prefix = None
+        try:
+            llm_client = LLMClient(config=config)
+            api_key_prefix = llm_client.api_key_prefix
+        except Exception as client_err:
+            logger.warning(
+                f"Could not initialize LLMClient for API key prefix: {client_err}"
+            )
+
+        # Generate chunk job objects
+        jobs = _generate_chunk_job_objects(
+            original_filepath=filepath,
+            system_prompt_content=system_prompt_content,
+            config=config,
+            tiktoken_encoding_func=encoder,
+            response_field=response_field,
+            llm_model_name=model_name,
+            api_key_prefix=api_key_prefix)
+
+        if not jobs:
+            logger.error("Failed to generate chunk jobs.")
+            return False
+
+        logger.info(f"Generated {len(jobs)} chunk jobs. Processing...")
+
+        # Process the chunks concurrently
+        df_result = process_file_concurrently(
+            filepath=filepath,
+            config=config,
+            system_prompt_content=system_prompt_content,
+            response_field=response_field,
+            llm_model_name=model_name,
+            api_key_prefix=api_key_prefix,
+            tiktoken_encoding_func=encoder)
+
+        if df_result is not None:
+            output_path = prepare_output_path(filepath, output_dir, config)
+            save_data(df_result, output_path)
+            logger.success(
+                f"Processed {filepath} in chunks. Results saved to {output_path}"
+            )
+            logger.success(
+                f"Total rows successfully processed: {len(df_result)}")
+            return True
+        else:
+            logger.error("Failed to process chunks.")
+            return False
+    except (FileNotFoundError, FileFormatError, DataValidationError, APIError,
+            OutputDirectoryError, FilePermissionError) as e:
         logger.error(f"[ERROR] {str(e)}")
         return False
     except Exception as e:
@@ -660,7 +770,8 @@ def _generate_chunk_job_objects(
                 system_prompt=system_prompt_content,
                 response_field=response_field,
                 original_filepath=original_filepath,
-                chunk_file_path=str(chunk_path) if chunk_path else "N/A_CHUNK_PATH",
+                chunk_file_path=str(chunk_path)
+                if chunk_path else "N/A_CHUNK_PATH",
                 llm_model=llm_model_name,
                 api_key_prefix=api_key_prefix,
                 status="error",
@@ -1079,7 +1190,9 @@ def process_file_concurrently(
 
         if not isinstance(max_workers_val, int) or max_workers_val <= 0:
             max_workers = 2  # Default fallback if not a positive integer
-            logger.warning(f"Invalid or missing 'max_simultaneous_batches' or 'max_workers' in config. Defaulting to {max_workers} workers.")
+            logger.warning(
+                f"Invalid or missing 'max_simultaneous_batches' or 'max_workers' in config. Defaulting to {max_workers} workers."
+            )
         else:
             max_workers = max_workers_val
 

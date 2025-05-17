@@ -130,28 +130,38 @@ def test_cli_split_mode_log_dir(mock_sys_argv, mock_batch_runner_functions,
     mock_batch_runner_functions['count'].assert_not_called()
 
 
-def test_cli_missing_input(mock_sys_argv, mock_batch_runner_functions,
-                           mock_load_config):
-    argv = ['script_name', '--mode',
-            'batch']  # Missing --input-file or --input-dir
+def test_cli_missing_input_defaults_to_input_dir(monkeypatch, mock_sys_argv, mock_batch_runner_functions, mock_load_config, tmp_path):
+    # Simulate input/ directory with a file
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "data.csv").write_text("id,text\n1,data")
+    monkeypatch.setattr("src.constants.PROJECT_ROOT", tmp_path)
+
+    argv = ['script_name', '--mode', 'batch']  # No --input-file or --input-dir
     mock_sys_argv(argv)
 
-    with patch('argparse.ArgumentParser._print_message'
-               ) as mock_print_message:  # To capture stderr
-        with pytest.raises(SystemExit) as e:
-            cli.main()
-    assert e.value.code == 2  # Argparse exits with 2 on error
-    # Check that an error message about missing arguments was printed (typical for argparse)
-    # This check is a bit fragile as it depends on argparse's exact error message format
-    error_message_found = False
-    for call_args in mock_print_message.call_args_list:
-        if "the following arguments are required" in str(
-                call_args
-        ) or "one of the arguments --input-file --input-dir is required" in str(
-                call_args):  # Check for common argparse error messages
-            error_message_found = True
-            break
-    assert error_message_found, "Argparse did not print an error message for missing input."
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 0
+    args, config = mock_batch_runner_functions['batch'].call_args[0]
+    assert args.input_dir == str(input_dir)
+    assert args.input_file is None
+
+
+def test_cli_missing_input_and_empty_input_dir(monkeypatch, mock_sys_argv, mock_batch_runner_functions, mock_load_config, tmp_path, capfd):
+    # Simulate empty input/ directory
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    monkeypatch.setattr("src.constants.PROJECT_ROOT", tmp_path)
+
+    argv = ['script_name', '--mode', 'batch']  # No --input-file or --input-dir
+    mock_sys_argv(argv)
+
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 2
+    out, err = capfd.readouterr()
+    assert "missing or empty" in out or "missing or empty" in err, "Did not log error message for missing/empty input dir."
 
 
 def test_cli_default_output_dir(mock_sys_argv, mock_batch_runner_functions,
