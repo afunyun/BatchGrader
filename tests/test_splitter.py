@@ -68,21 +68,23 @@ def test_force_chunk_count_splits_evenly(cleanup_output):
 
 
 def test_token_chunking_respects_limit(cleanup_output):
+    import pandas as pd
+    import os
+    from unittest.mock import MagicMock, patch
+    from src.input_splitter import split_file_by_token_limit
+    from tests.test_helpers import dummy_token_counter, TEST_OUTPUT_DIR
+
     df = pd.DataFrame({'text': ['a' * 10] * 12})
     tmp = os.path.join(TEST_OUTPUT_DIR, 'tokchunk.csv')
     df.to_csv(tmp, index=False)
-    
-    # Create a mock logger that won't cause TypeError with level comparison
     mock_logger = MagicMock()
-    
     with patch('src.input_splitter.logger', mock_logger):
         files, tokens = split_file_by_token_limit(
             tmp,
             token_limit=30,
             count_tokens_fn=dummy_token_counter,
             output_dir=TEST_OUTPUT_DIR)
-    for t in tokens:
-        assert t <= 30
+    assert all(token_count <= 30 for token_count in tokens)
     all_rows = sum(pd.read_csv(f).shape[0] for f in files)
     assert all_rows == 12
 

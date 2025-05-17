@@ -2,6 +2,10 @@
 
 ## Last updated: 2025-05-20
 
+### Testing
+
+- Avoid explicit loops in tests. Prefer `pytest.mark.parametrize` or similar mechanisms for generating multiple test cases. This improves test reporting and clarity.
+
 This document outlines best practices for maintaining and extending the BatchGrader codebase. It incorporates lessons learned from recent refactoring efforts and serves as a guide for consistent, maintainable code.
 
 ## 1. Import Structure
@@ -144,22 +148,24 @@ Cost is calculated using model pricing from docs/pricing.csv (per 1M tokens, inp
 
 When updating the version number:
 
-1. Update in **all** relevant files:
+1. Update the version **everywhere** it appears:
+   - `pyproject.toml` (in `[project]` and `[tool.poetry]` if present)
+   - `README.md` (top summary and/or recent changes section)
+   - `docs/scratchpad.md` (detailed documentation)
+   - `docs/CHANGELOG.md` (comprehensive changelog)
+   - `uv.lock` (run `uv pip compile` or equivalent to update)
+2. Use [semantic versioning](https://semver.org/):
+   - **MAJOR**: incompatible API changes
+   - **MINOR**: added functionality, backward-compatible
+   - **PATCH**: backward-compatible bug fixes
 
-   - `pyproject.toml` (both in `[project]` and `[tool.poetry]` sections)
-   - `README.md` with a summary of changes
-   - `docs/scratchpad.md` with detailed documentation
-   - `uv.lock` file
+3. Changelog guidance:
+   - Add a brief summary of the release and major changes to `README.md`
+   - Write a detailed, itemized changelog in `docs/CHANGELOG.md` for all user-facing or developer-facing changes (features, fixes, breaking changes, refactors, doc updates, etc.)
+   - If major, describe migration steps or breaking changes explicitly
+   - Keep `docs/scratchpad.md` for technical or implementation notes as needed
 
-2. Follow semantic versioning:
-
-   - MAJOR: Incompatible API changes
-   - MINOR: Add functionality in a backward-compatible manner
-   - PATCH: Backward-compatible bug fixes
-
-3. Include a detailed changelog in both:
-   - Brief summary in README.md
-   - Comprehensive documentation in docs/scratchpad.md
+4. Ensure all references to the old version are updated before merging or releasing.
 
 ## 6. Testing Best Practices
 

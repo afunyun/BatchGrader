@@ -118,4 +118,3 @@
 
 - Test template loading and rendering
 - Test error cases for malformed templates
-  - Test error cases for malformed templates

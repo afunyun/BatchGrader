@@ -14,8 +14,7 @@ from src.logger import setup_logging, SUCCESS_LEVEL_NUM
 @pytest.fixture
 def mock_logger():
     """Create a mock logger for testing."""
-    mock = MagicMock(spec=logging.Logger)
-    return mock
+    return MagicMock(spec=logging.Logger)
 
 
 @pytest.fixture
@@ -26,17 +25,19 @@ def temp_log_dir(tmp_path):
     return log_dir
 
 
-def test_logger_init_creates_directory():
-    """Test that logger creates log directory if it doesn't exist."""
+def _mock_logger_setup():
     mock_path_instance = MagicMock(spec=Path)
     mock_path_constructor = MagicMock(return_value=mock_path_instance)
-    
-    # Create mock handlers with proper level attributes
     mock_file_handler = MagicMock(spec=logging.Handler)
     mock_file_handler.level = logging.INFO
     mock_rich_handler = MagicMock(spec=logging.Handler)
     mock_rich_handler.level = logging.INFO
-    
+    return mock_path_instance, mock_path_constructor, mock_file_handler, mock_rich_handler
+
+
+def test_logger_init_creates_directory():
+    """Test that logger creates log directory if it doesn't exist."""
+    mock_path_instance, mock_path_constructor, mock_file_handler, mock_rich_handler = _mock_logger_setup()
     with patch('src.logger.Path', mock_path_constructor) as mock_path_patch, \
          patch('src.logger.logging.getLogger') as mock_get_logger, \
          patch('src.logger.logging.FileHandler', return_value=mock_file_handler), \

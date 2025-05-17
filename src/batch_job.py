@@ -35,6 +35,7 @@ Methods:
 
 from typing import Any, Dict, Optional, Union
 import os
+import threading
 import time
 import datetime
 
@@ -83,42 +84,64 @@ class BatchJob:
         self.processed_items: int = 0
         self.start_time: Optional[float] = None
         self.estimated_completion_time: Optional[datetime.datetime] = None
+        
+        # Thread safety
+        self._lock = threading.Lock()  # Protects access to progress-related attributes
 
     def update_progress(self, items_processed_increment: int):
-        """Updates the progress of the job."""
-        if self.start_time is None and self.total_items > 0:
-            self.start_time = time.monotonic()
+        """Updates the progress of the job.
+        
+        This method is thread-safe and can be called from multiple threads.
+        
+        Args:
+            items_processed_increment: Number of items processed since last update (must be positive)
+            
+        Raises:
+            ValueError: If items_processed_increment is not positive
+        """
+        if items_processed_increment <= 0:
+            raise ValueError("items_processed_increment must be a positive integer")
+            
+        with self._lock:
+            if self.start_time is None and self.total_items > 0:
+                self.start_time = time.monotonic()
+                
+            self.processed_items += items_processed_increment
+            self.processed_items = min(self.processed_items, self.total_items)  # Cap at total_items
 
-        self.processed_items += items_processed_increment
-        self.processed_items = min(self.processed_items,
-                                   self.total_items)  # Cap at total_items
-
-        if self.total_items > 0:  # Only calculate if there are items
-            if self.processed_items == self.total_items:  # Job completed
-                self.estimated_completion_time = datetime.datetime.now()
-            elif self.processed_items > 0 and self.start_time is not None:  # Job in progress
-                elapsed_time = time.monotonic() - self.start_time
-                time_per_item = elapsed_time / self.processed_items
-                remaining_items = self.total_items - self.processed_items
-                remaining_time_seconds = remaining_items * time_per_item
-                self.estimated_completion_time = datetime.datetime.now(
-                ) + datetime.timedelta(seconds=remaining_time_seconds)
+            if self.total_items > 0:  # Only calculate if there are items
+                if self.processed_items == self.total_items:  # Job completed
+                    self.estimated_completion_time = datetime.datetime.now()
+                elif self.processed_items > 0 and self.start_time is not None:  # Job in progress
+                    elapsed_time = time.monotonic() - self.start_time
+                    time_per_item = elapsed_time / self.processed_items
+                    remaining_items = self.total_items - self.processed_items
+                    remaining_time_seconds = remaining_items * time_per_item
+                    self.estimated_completion_time = (
+                        datetime.datetime.now() + 
+                        datetime.timedelta(seconds=remaining_time_seconds)
+                    )
 
     def get_progress_eta_str(self) -> str:
-        """Returns a string with progress percentage and ETA."""
+        """Returns a string with progress percentage and ETA.
+        
+        The completion state is determined by comparing processed_items with total_items
+        rather than relying on external status to avoid synchronization issues.
+        """
         if self.total_items == 0:
             return "N/A (no items)"
 
         progress_percent = (self.processed_items / self.total_items) * 100
 
-        eta_str = "Calculating..."
-        if self.status == "completed":
+        # Determine ETA string based on progress state
+        if self.estimated_completion_time and self.processed_items == self.total_items:
             eta_str = "Completed"
         elif self.estimated_completion_time:
-            eta_str = self.estimated_completion_time.strftime(
-                "%Y-%m-%d %H:%M:%S")
-        elif self.status == "running" and self.processed_items == 0:
+            eta_str = self.estimated_completion_time.strftime("%Y-%m-%d %H:%M:%S")
+        elif self.processed_items == 0:
             eta_str = "Started, calculating ETA..."
+        else:
+            eta_str = "Calculating..."
 
         return f"{progress_percent:.2f}% (ETA: {eta_str})"
 

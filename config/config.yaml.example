@@ -5,8 +5,11 @@
 max_simultaneous_batches: 2
 force_chunk_count: 0  # If >1, forcibly split input into this many chunks regardless of token limits
 halt_on_chunk_failure: true  # If true, aborts remaining chunks for a file if any chunk fails critically
-
-# Directory paths (relative to project root)
+# API request settings
+ poll_interval_seconds: 60
+ max_tokens_per_response: 1000
+ response_field: llm_response
+ batch_api_endpoint: /v1/chat/completions
 input_dir: input
 output_dir: output
 examples_dir: examples/examples.txt
@@ -15,12 +18,6 @@ examples_dir: examples/examples.txt
 openai_model_name: gpt-4o-mini-2024-07-18
 # Replace with your API key or set via OPENAI_API_KEY environment variable
 # openai_api_key: YOUR_OPENAI_API_KEY_HERE
-
-# Batch job settings
-poll_interval_seconds: 60
-max_tokens_per_response: 1000
-response_field: llm_response
-batch_api_endpoint: /v1/chat/completions
 
 # Token limits
 token_limit: 2000000

@@ -150,26 +150,27 @@ def test_batch_job_default_values():
     assert job.input_file_id_for_chunk is None
 
 
+def _check_log_str(job, expected_substrings):
+    log_str = job.get_status_log_str()
+    for substring in expected_substrings:
+        assert substring in log_str
+
+
 def test_get_status_log_str(sample_batch_job):
     """Test the get_status_log_str method."""
     job = sample_batch_job
 
     # Default state
-    log_str = job.get_status_log_str()
-    assert "Chunk test_chunk_001" in log_str
-    assert "pending" in log_str
+    _check_log_str(job, ["Chunk test_chunk_001", "pending"])
 
     # With batch ID
     job.openai_batch_id = "batch_123456"
-    log_str = job.get_status_log_str()
-    assert "Batch ID: batch_123456" in log_str
+    _check_log_str(job, ["Batch ID: batch_123456"])
 
     # With error
     job.status = "error"
     job.error_message = "API connection failed"
-    log_str = job.get_status_log_str()
-    assert "error" in log_str
-    assert "API connection failed" in log_str
+    _check_log_str(job, ["error", "API connection failed"])
 
 
 def test_batch_job_token_tracking(sample_batch_job):
@@ -229,32 +230,45 @@ def test_update_progress(sample_batch_job, zero_item_batch_job):
     assert zero_item_batch_job.estimated_completion_time is None
 
 
+def _assert_progress_str_contains(progress_str: str, expected_percent: str, expected_status: str):
+    """Helper to assert progress string contains expected values."""
+    assert expected_percent in progress_str, f"Expected {expected_percent} in progress string"
+    assert expected_status in progress_str, f"Expected '{expected_status}' in progress string"
+    return progress_str
+
 def test_get_progress_eta_str(sample_batch_job, zero_item_batch_job):
     """Test progress string formatting in different states."""
     job = sample_batch_job
 
     # Initial state
-    assert "0.00%" in job.get_progress_eta_str()
-    assert "Calculating" in job.get_progress_eta_str()
+    progress_str = _assert_progress_str_contains(
+        job.get_progress_eta_str(),
+        "0.00%",
+        "Started, calculating ETA"
+    )
 
     # After starting
     job.status = "running"
-    eta_str = job.get_progress_eta_str()
-    assert "0.00%" in eta_str
-    assert "Started, calculating ETA" in eta_str
+    _assert_progress_str_contains(
+        job.get_progress_eta_str(),
+        "0.00%",
+        "Started, calculating ETA"
+    )
 
     # After some progress
     job.update_progress(1)
-    eta_str = job.get_progress_eta_str()
-    assert "33.33%" in eta_str
-    assert job.estimated_completion_time.strftime("%Y-%m-%d %H:%M:%S") in eta_str
+    progress_str = job.get_progress_eta_str()
+    assert "33.33%" in progress_str
+    assert job.estimated_completion_time.strftime("%Y-%m-%d %H:%M:%S") in progress_str
 
     # Completed state
     job.status = "completed"
-    job.update_progress(3)
-    eta_str = job.get_progress_eta_str()
-    assert "100.00%" in eta_str
-    assert "Completed" in eta_str
+    job.update_progress(3)  # Mark all 3 items as processed
+    _assert_progress_str_contains(
+        job.get_progress_eta_str(),
+        "100.00%",
+        "Completed"
+    )
 
     # Zero items case using fixture
     assert "N/A (no items)" in zero_item_batch_job.get_progress_eta_str()

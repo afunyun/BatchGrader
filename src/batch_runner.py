@@ -47,54 +47,25 @@ def get_log_dirs(args) -> Tuple[Path, Path]:
     return log_dir, archive_dir
 
 
-def process_file(filepath_str: str, output_dir_str: str,
-                 config: Dict[str, Any]) -> bool:
+def process_file(filepath_str: str, output_dir_str: str, config: Dict[str, Any]) -> bool:
     """
     Processes a single file using the new file_processor.process_file_wrapper.
     This function now acts as a simpler interface to the core processing logic.
+    
+    Args:
+        filepath_str: Path to the input file as a string
+        output_dir_str: Output directory path as a string
+        config: Configuration dictionary containing processing parameters
+        
+    Returns:
+        bool: True if processing was successful, False otherwise
     """
     filepath = Path(filepath_str)
     output_dir = Path(output_dir_str)
     logger.info(f"Initiating processing for: {filepath.name} -> {output_dir}")
 
     try:
-        system_prompt_content = load_system_prompt(config)
-        response_field = config.get('response_field_name',
-                                    DEFAULT_RESPONSE_FIELD)
-
-        # Get encoder using centralized utility
-        model_name = config.get('openai_model_name', DEFAULT_MODEL)
-        encoder = get_encoder(model_name)
-        if encoder is None:
-            logger.error(
-                f"Failed to get encoder for model {model_name}. Token counting and splitting might be affected."
-            )
-
-        # Use global token limit from constants, overridden by config if present
-        token_limit = config.get('global_token_limit',
-                                 DEFAULT_GLOBAL_TOKEN_LIMIT)
-        logger.debug(
-            f"Processing configuration: model={model_name}, token_limit={token_limit}, response_field={response_field}"
-        )
-
-        # Delegate to the centralized file processing wrapper
-        success = process_file_wrapper(
-            filepath=str(filepath),
-            output_dir=str(output_dir),
-            config=config,
-            system_prompt_content=system_prompt_content,
-            response_field=response_field,
-            encoder=encoder,
-            token_limit=token_limit)
-
-        if success:
-            logger.success(f"Successfully processed {filepath.name}.")
-        else:
-            logger.error(
-                f"Failed to process {filepath.name}. See logs for details. Config state: model={model_name}, token_limit={token_limit}, response_field={response_field}"
-            )
-        return success
-
+        return _process_file_with_config(config, filepath, output_dir)
     except FileNotFoundError:
         logger.error(
             f"[ERROR] Input file not found: {filepath}. Please verify the file exists and you have read permissions."
@@ -111,30 +82,78 @@ def process_file(filepath_str: str, output_dir_str: str,
             exc_info=True,
             extra={
                 "file_info": {
-                    "name":
-                    filepath.name,
-                    "size":
-                    filepath.stat().st_size if filepath.exists() else None,
-                    "last_modified":
-                    datetime.datetime.fromtimestamp(
+                    "name": filepath.name,
+                    "size": filepath.stat().st_size if filepath.exists() else None,
+                    "last_modified": datetime.datetime.fromtimestamp(
                         filepath.stat().st_mtime).isoformat()
                     if filepath.exists() else None
                 },
                 "config": config,
                 "error_type": type(e).__name__
-            })
+            }
+        )
         return False
 
 
+def _process_file_with_config(
+    config: Dict[str, Any], 
+    filepath: Path, 
+    output_dir: Path
+) -> bool:
+    """Process a file with the given configuration.
+    
+    Args:
+        config: Configuration dictionary
+        filepath: Path to the input file
+        output_dir: Output directory path
+        
+    Returns:
+        bool: True if processing was successful, False otherwise
+    """
+    system_prompt_content = load_system_prompt(config)
+    response_field = config.get('response_field_name', DEFAULT_RESPONSE_FIELD)
+
+    # Get encoder using centralized utility
+    model_name = config.get('openai_model_name', DEFAULT_MODEL)
+    encoder = get_encoder(model_name)
+    if encoder is None:
+        logger.error(
+            f"Failed to get encoder for model {model_name}. Token counting and splitting might be affected."
+        )
+
+    # Use global token limit from constants, overridden by config if present
+    token_limit = config.get('global_token_limit', DEFAULT_GLOBAL_TOKEN_LIMIT)
+    logger.debug(
+        f"Processing configuration: model={model_name}, token_limit={token_limit}, response_field={response_field}"
+    )
+
+    # Delegate to the centralized file processing wrapper
+    success = process_file_wrapper(
+        filepath=str(filepath),
+        output_dir=str(output_dir),
+        config=config,
+        system_prompt_content=system_prompt_content,
+        response_field=response_field,
+        encoder=encoder,
+        token_limit=token_limit
+    )
+
+    if success:
+        logger.info(f"Successfully processed {filepath.name}.")
+    else:
+        logger.info(
+            f"Failed to process {filepath.name}. See logs for details. Config state: model={model_name}, token_limit={token_limit}, response_field={response_field}"
+        )
+    return success
+
+
 def print_token_cost_stats(config=None):
-    """Prints token usage statistics for the current day."""
+    'Prints token usage statistics for the current day.'
     try:
         # Pass config to LLMClient instead of having it load config itself
         llm_client = LLMClient(config=config)
         api_key = llm_client.api_key
-        daily_usage = get_token_usage_for_day(
-            api_key, log_path=DEFAULT_TOKEN_USAGE_LOG_PATH)
-        if daily_usage:
+        if daily_usage := get_token_usage_for_day(api_key, log_path=DEFAULT_TOKEN_USAGE_LOG_PATH):
             logger.info("Token Usage Stats (Today):")
             # Ensure daily_usage is treated as an int if it's just the token count
             if isinstance(daily_usage, int):
@@ -176,9 +195,7 @@ def print_token_cost_summary(summary_file_path: Optional[str] = None,
             summary_file_path) if summary_file_path else default_summary_path
 
         if actual_summary_path.exists():
-            summary = get_token_usage_summary(
-                event_log_path=actual_summary_path)
-            if summary:
+            if summary := get_token_usage_summary(event_log_path=actual_summary_path):
                 logger.info("Overall Token Usage Summary (from file):")
                 logger.info(
                     f"  Total Tokens (Overall): {summary['total_tokens_all_time']}"
@@ -186,7 +203,6 @@ def print_token_cost_summary(summary_file_path: Optional[str] = None,
                 logger.info(
                     f"  Estimated Cost (Overall): ${summary['total_estimated_cost_all_time']:.4f}"
                 )
-                # Add more details as available
             else:
                 logger.info(
                     f"Token usage summary file is empty or invalid: {actual_summary_path}"
@@ -202,127 +218,141 @@ def print_token_cost_summary(summary_file_path: Optional[str] = None,
 def run_batch_processing(args: Any, config: Dict[str, Any]):
     """
     Main function to run batch processing based on parsed arguments and configuration.
-    (CLI parsing will be moved to cli.py, this function will be called by cli.py)
+    Orchestrates helpers for file resolution, directory setup, processing, and reporting.
     """
-    # Get log directories from args or constants
     log_dir, archive_dir = get_log_dirs(args)
-
-    # Now that log_dir and archive_dir are determined (not modifying globals), prune logs
     prune_logs_if_needed(log_dir, archive_dir, config=config)
+    files_to_process = _resolve_files_to_process(args)
+    if not files_to_process:
+        return
+    output_directory = _setup_output_directory(args)
+    if output_directory is None:
+        return
+    result = _process_files(files_to_process, output_directory, config)
+    _report_batch_results(result, files_to_process, args, log_dir, config)
 
-    if args.input_file:
-        files_to_process_str = [args.input_file]
-    elif args.input_dir:
+
+def _resolve_files_to_process(args) -> list:
+    """
+    Resolves and returns the list of files to process based on CLI args.
+    """
+    if getattr(args, 'input_file', None):
+        return [args.input_file]
+    elif getattr(args, 'input_dir', None):
         input_directory = Path(args.input_dir)
         if not input_directory.is_dir():
-            logger.error(
-                f"[ERROR] Input directory not found or not a directory: {input_directory}. Please verify the path and permissions."
-            )
-            return
-        files_to_process_str = [
+            logger.error(f"[ERROR] Input directory not found or not a directory: {input_directory}. Please verify the path and permissions.")
+            return []
+        files = [
             str(f) for f in input_directory.iterdir()
-            if f.is_file() and f.name.endswith(('.csv', '.xlsx', '.jsonl'))
+            if f.is_file() and f.name.endswith((".csv", ".xlsx", ".jsonl"))
         ]
-        if not files_to_process_str:
-            logger.warning(
-                f"No suitable files (csv, xlsx, jsonl) found in directory: {input_directory}. Supported formats: .csv, .xlsx, .jsonl"
-            )
-            return
+        if not files:
+            logger.warning(f"No suitable files (csv, xlsx, jsonl) found in directory: {input_directory}. Supported formats: .csv, .xlsx, .jsonl")
+        return files
     else:
-        logger.error(
-            "[ERROR] No input file or directory specified. Use --input-file or --input-dir to specify the input source."
-        )
-        return
+        logger.error("[ERROR] No input file or directory specified. Use --input-file or --input-dir to specify the input source.")
+        return []
 
-    output_directory_str = args.output_dir if args.output_dir else str(
-        Path.cwd() / "output" / "batch_results")  # Default output
+
+def _setup_output_directory(args) -> Optional[Path]:
+    """
+    Sets up and returns the output directory Path, or None on failure.
+    """
+    output_directory_str = getattr(args, 'output_dir', None) or str(Path.cwd() / "output" / "batch_results")
     output_directory = Path(output_directory_str)
     try:
         output_directory.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output directory set to: {output_directory}")
+        return output_directory
     except Exception as e:
-        logger.error(
-            f"[ERROR] Failed to create output directory {output_directory}: {e}. Please verify permissions and path."
-        )
-        return
+        logger.error(f"[ERROR] Failed to create output directory {output_directory}: {e}. Please verify permissions and path.")
+        return None
 
+
+def _process_files(files_to_process: list, output_directory: Path, config: dict) -> dict:
+    """
+    Processes each file and returns a result summary dict.
+    """
     overall_success = True
     processed_files_count = 0
     failed_files_count = 0
     start_time = datetime.datetime.now()
-
-    for filepath_str in files_to_process_str:
+    for filepath_str in files_to_process:
         filepath = Path(filepath_str)
-        logger.info(
-            f"\n--- Starting processing for: {filepath.name} (Size: {filepath.stat().st_size:,} bytes) ---"
-        )
+        logger.info(f"\n--- Starting processing for: {filepath.name} (Size: {filepath.stat().st_size:,} bytes) ---")
         try:
-            success = process_file(str(filepath), str(output_directory),
-                                   config)
+            success = process_file(str(filepath), str(output_directory), config)
             if success:
                 processed_files_count += 1
             else:
                 failed_files_count += 1
-                overall_success = False  # If any file fails, overall is not a complete success
+                overall_success = False
+                if not config.get("continue_on_failure", False):
+                    logger.warning("Aborting batch early due to failure and continue_on_failure=False")
+                    break
         except (IOError, OSError) as e:
             logger.error(
                 f"File system error processing {filepath.name}: {str(e)}",
                 exc_info=True,
                 extra={
                     "file_info": {
-                        "name":
-                        filepath.name,
-                        "size":
-                        filepath.stat().st_size if filepath.exists() else None,
-                        "last_modified":
-                        datetime.datetime.fromtimestamp(
-                            filepath.stat().st_mtime).isoformat()
-                        if filepath.exists() else None
+                        "name": filepath.name,
+                        "size": filepath.stat().st_size if filepath.exists() else None,
+                        "last_modified": datetime.datetime.fromtimestamp(filepath.stat().st_mtime).isoformat() if filepath.exists() else None
                     },
                     "error_type": type(e).__name__,
                     "config": config
                 })
             failed_files_count += 1
             overall_success = False
+            if not config.get("continue_on_failure", False):
+                logger.warning("Aborting batch early due to file system error and continue_on_failure=False")
+                break
         except Exception as e:
             logger.error(
                 f"Unhandled exception processing {filepath.name}: {str(e)}",
                 exc_info=True,
                 extra={
                     "file_info": {
-                        "name":
-                        filepath.name,
-                        "size":
-                        filepath.stat().st_size,
-                        "last_modified":
-                        datetime.datetime.fromtimestamp(
-                            filepath.stat().st_mtime).isoformat()
+                        "name": filepath.name,
+                        "size": filepath.stat().st_size,
+                        "last_modified": datetime.datetime.fromtimestamp(filepath.stat().st_mtime).isoformat()
                     },
                     "error_type": type(e).__name__,
                     "config": config
                 })
             failed_files_count += 1
             overall_success = False
+            if not config.get("continue_on_failure", False):
+                logger.warning("Aborting batch early due to unhandled exception and continue_on_failure=False")
+                break
         logger.info(f"--- Finished processing for: {filepath.name} ---")
-
     end_time = datetime.datetime.now()
     duration = (end_time - start_time).total_seconds()
+    return {
+        "overall_success": overall_success,
+        "processed_files_count": processed_files_count,
+        "failed_files_count": failed_files_count,
+        "duration": duration,
+        "start_time": start_time,
+        "end_time": end_time
+    }
 
+
+def _report_batch_results(result: dict, files_to_process: list, args: Any, log_dir: Path, config: dict):
+    """
+    Logs summary and prints stats if requested.
+    """
     logger.info("\nBatch processing finished.")
-    logger.info(
-        f"Processing duration: {duration:.2f} seconds ({duration/60:.2f} minutes)"
-    )
-    logger.info(f"Successfully processed files: {processed_files_count}")
-    logger.info(f"Failed files: {failed_files_count}")
-
-    if args.stats:
+    logger.info(f"Processing duration: {result['duration']:.2f} seconds ({result['duration']/60:.2f} minutes)")
+    logger.info(f"Successfully processed files: {result['processed_files_count']}")
+    logger.info(f"Failed files: {result['failed_files_count']}")
+    if getattr(args, 'stats', False):
         print_token_cost_stats(config=config)
         print_token_cost_summary(log_dir=log_dir, config=config)
-
-    if not overall_success and failed_files_count > 0:
-        logger.warning(
-            f"Some files failed to process ({failed_files_count} out of {len(files_to_process_str)}). Please check the logs for details."
-        )
+    if not result['overall_success'] and result['failed_files_count'] > 0:
+        logger.warning(f"Some files failed to process ({result['failed_files_count']} out of {len(files_to_process)}). Please check the logs for details.")
 
 
 def run_count_mode(args: Any, config: Dict[str, Any]):
@@ -460,8 +490,7 @@ def run_split_mode(args: Any, config: Dict[str, Any]):
         config.get('split_token_limit', DEFAULT_SPLIT_TOKEN_LIMIT))
     row_limit_per_chunk = splitter_options.get(
         'max_rows_per_chunk',
-        config.get('split_row_limit',
-                   None))  # Default to None if not specified
+        config.get('split_row_limit'))  # Default to None if not specified
     force_chunk_count = splitter_options.get('force_chunk_count',
                                              None)  # Default to None
 

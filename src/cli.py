@@ -19,12 +19,11 @@ def main():
     # A more robust solution might involve a pre-parsing step for --log-dir.
     pre_log_dir_val = None
     if '--log-dir' in sys.argv:
-        try:
+        from contextlib import suppress
+        with suppress(ValueError):
             log_dir_index = sys.argv.index('--log-dir') + 1
             if log_dir_index < len(sys.argv):
                 pre_log_dir_val = sys.argv[log_dir_index]
-        except ValueError:
-            pass  # --log-dir not found or no value after it
 
     # Use the extracted log_dir or default from constants for initial setup
     initial_log_dir = Path(
@@ -95,7 +94,7 @@ def main():
         config = load_config(
             args.config_file)  # load_config handles default path if None
         logger.info(
-            f"Configuration loaded successfully from: {args.config_file if args.config_file else 'default path'}"
+            f"Configuration loaded successfully from: {args.config_file or 'default path'}"
         )
     except FileNotFoundError:
         logger.error(

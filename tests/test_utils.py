@@ -187,10 +187,7 @@ def test_ensure_config_files_exist_missing_configs(mock_copy, mock_exists,
     # Instead of comparing exact paths (which differs between OS),
     # check that the path ends with the expected directory name
     call_arg = mock_makedirs.call_args[0][0]
-    if hasattr(call_arg, 'endswith'):  # String
-        assert call_arg.endswith('config')
-    else:  # Path object
-        assert str(call_arg).endswith('config')
+    assert str(call_arg).endswith('config')
 
     # Verify the exist_ok parameter
     assert mock_makedirs.call_args[1] == {'exist_ok': True}
