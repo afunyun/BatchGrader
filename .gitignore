@@ -42,5 +42,5 @@ docs/codebase_best_practices.md
 docs/seekret/
 .markdownlintignore
 .coverage
-output/batch_results/afunyun_dataset_results.csv
-release_tag.ps1
+output/batch_results/*.csv
+*.ps1

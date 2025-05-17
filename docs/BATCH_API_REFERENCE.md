@@ -82,7 +82,7 @@ const openai = new OpenAI();
 const batch = await openai.batches.create({
   input_file_id: "file-abc123",
   endpoint: "/v1/chat/completions",
-  completion_window: "24h"
+  completion_window: "24h",
 });
 
 console.log(batch);
@@ -172,16 +172,16 @@ curl https://api.openai.com/v1/batches/batch_abc123 \
 
 The status of a given Batch object can be any of the following:
 
-|Status|Description|
-|---|---|
-|validating|the input file is being validated before the batch can begin|
-|failed|the input file has failed the validation process|
-|in_progress|the input file was successfully validated and the batch is currently being run|
-|finalizing|the batch has completed and the results are being prepared|
-|completed|the batch has been completed and the results are ready|
-|expired|the batch was not able to be completed within the 24-hour time window|
-|cancelling|the batch is being cancelled (may take up to 10 minutes)|
-|cancelled|the batch was cancelled|
+| Status      | Description                                                                    |
+| ----------- | ------------------------------------------------------------------------------ |
+| validating  | the input file is being validated before the batch can begin                   |
+| failed      | the input file has failed the validation process                               |
+| in_progress | the input file was successfully validated and the batch is currently being run |
+| finalizing  | the batch has completed and the results are being prepared                     |
+| completed   | the batch has been completed and the results are ready                         |
+| expired     | the batch was not able to be completed within the 24-hour time window          |
+| cancelling  | the batch is being cancelled (may take up to 10 minutes)                       |
+| cancelled   | the batch was cancelled                                                        |
 
 ### 5\. Retrieve the results
 
@@ -214,7 +214,7 @@ curl https://api.openai.com/v1/files/file-xyz123/content \
 
 The output `.jsonl` file will have one response line for every successful request line in the input file. Any failed requests in the batch will have their error information written to an error file that can be found via the batch's `error_file_id`.
 
-Note that the output line order **may not match** the input line order. Instead of relying on order to process your results, use the custom\_id field which will be present in each line of your output file and allow you to map requests in your input to results in your output.
+Note that the output line order **may not match** the input line order. Instead of relying on order to process your results, use the custom_id field which will be present in each line of your output file and allow you to map requests in your input to results in your output.
 
 ```jsonl
 {"id": "batch_req_123", "custom_id": "request-2", "response": {"status_code": 200, "request_id": "req_123", "body": {"id": "chatcmpl-123", "object": "chat.completion", "created": 1711652795, "model": "gpt-3.5-turbo-0125", "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello."}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 22, "completion_tokens": 2, "total_tokens": 24}, "system_fingerprint": "fp_123"}}, "error": null}
@@ -307,6 +307,6 @@ Expired requests will be written to your error file with the message as shown be
 
 ## Other resources
 
-For more concrete examples, visit ****the OpenAI Cookbook****, which contains sample code for use cases like classification, sentiment analysis, and summary generation.
+For more concrete examples, visit \***\*the OpenAI Cookbook\*\***, which contains sample code for use cases like classification, sentiment analysis, and summary generation.
 
 Was this page useful?

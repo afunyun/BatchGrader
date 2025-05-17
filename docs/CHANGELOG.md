@@ -2,6 +2,12 @@
 
 All notable changes to the BatchGrader project will be documented in this file.
 
+- Refactored `_cleanup_chunked_dir_and_return_none` into `cleanup_chunked_dir` (with type hints, improved logging, docstring, error handling, and use of `is_dir`) and updated all callers.<!-- Added by refactor on 2025-05-17 -->
+
+## Last updated: 2025-05-17
+
+- Version update on 2025-05-17: Updated changelog dates.
+
 ## 0.6.1.0 - 2025-05-17
 
 ### Added
@@ -35,6 +41,8 @@ All notable changes to the BatchGrader project will be documented in this file.
 - Updated code_review.md to reflect completed test improvements
 
 ### Changed
+
+- Removed `src/__init__.py` after migration to `src/batchgrader/` package structure; base directory is no longer a Python package.
 
 - Standardized testing patterns across the codebase
 - Improved test reliability with proper resource cleanup

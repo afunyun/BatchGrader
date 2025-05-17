@@ -5,14 +5,15 @@ Includes:
 - deep_merge_dicts: Recursively merge two dictionaries (for config merging)
 - ensure_config_files_exist: Creates default config.yaml and prompts.yaml from examples if they don't exist.
 """
+
+import logging
 import os
 import shutil
-import logging
-from typing import Any, Optional
-from pathlib import Path
+from typing import Optional
 
 import tiktoken
-from src.constants import PROJECT_ROOT
+
+from batchgrader.constants import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def ensure_config_files_exist(logger):
 
         files_to_check = {
             "config.yaml": "config.yaml.example",
-            "prompts.yaml": "prompts.yaml.example"
+            "prompts.yaml": "prompts.yaml.example",
         }
 
         os.makedirs(str(config_dir), exist_ok=True)
@@ -56,19 +57,18 @@ def ensure_config_files_exist(logger):
             dest_path = config_dir / dest_file
             src_example_path = config_dir / src_example_file
 
-            if not os.path.exists(str(dest_path)):
-                if os.path.exists(str(src_example_path)):
-                    shutil.copy2(src_example_path, dest_path)
-                    logger.info(
-                        f"'{dest_path}' not found. Copied from '{src_example_path}'."
-                    )
-                else:
-                    logger.warning(
-                        f"'{dest_path}' not found, and example file '{src_example_path}' also missing. Cannot create default configuration."
-                    )
-            else:
+            if dest_path.exists():
                 logger.debug(f"'{dest_path}' already exists. No action taken.")
 
+            elif src_example_path.exists():
+                shutil.copy2(src_example_path, dest_path)
+                logger.info(
+                    f"'{dest_path}' not found. Copied from '{src_example_path}'."
+                )
+            else:
+                logger.warning(
+                    f"'{dest_path}' not found, and example file '{src_example_path}' also missing. Cannot create default configuration."
+                )
     except Exception as e:
         logger.error(f"Error ensuring config files exist: {e}", exc_info=True)
 
@@ -77,23 +77,23 @@ def get_encoder(
         model_name: Optional[str] = None) -> Optional[tiktoken.Encoding]:
     """
     Get a tiktoken encoder for the specified model or a default one.
-    
+
     Args:
         model_name: Optional name of the model to get encoder for. If None, uses cl100k_base.
-        
+
     Returns:
         tiktoken.Encoding object if successful, None if failed
-        
+
     Note:
         This function centralizes encoder acquisition logic to avoid duplication
         across the codebase. It handles errors gracefully and logs warnings.
     """
     try:
-        if model_name:
-            encoder = tiktoken.encoding_for_model(model_name)
-        else:
-            encoder = tiktoken.get_encoding("cl100k_base")
-        return encoder
+        return (
+            tiktoken.encoding_for_model(model_name)
+            if model_name
+            else tiktoken.get_encoding("cl100k_base")
+        )
     except Exception as e:
         logger.warning(f"Failed to initialize encoder: {e}")
         return None

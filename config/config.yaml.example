@@ -5,19 +5,19 @@
 max_simultaneous_batches: 2
 force_chunk_count: 0  # If >1, forcibly split input into this many chunks regardless of token limits
 halt_on_chunk_failure: true  # If true, aborts remaining chunks for a file if any chunk fails critically
-# API request settings
  poll_interval_seconds: 60
- max_tokens_per_response: 1000
- response_field: llm_response
- batch_api_endpoint: /v1/chat/completions
+poll_interval_seconds: 60
+max_tokens_per_response: 1000
+response_field: llm_response
+batch_api_endpoint: /v1/chat/completions
 
 # Retry settings for API calls (using Tenacity)
 retry_settings:
-  max_retries: 5           # Maximum number of retry attempts
-  initial_backoff_seconds: 1  # Initial delay before the first retry (in seconds)
-  max_backoff_seconds: 60   # Maximum delay between retries (in seconds)
-  # exponential_base: 2    # Multiplier for backoff (e.g., 1, 2, 4, 8 seconds if base is 2) - default is 2
-  # jitter: true           # Adds random jitter to backoff times to avoid thundering herd - default is true
+max_retries: 5           # Maximum number of retry attempts
+initial_backoff_seconds: 1  # Initial delay before the first retry (in seconds)
+max_backoff_seconds: 60   # Maximum delay between retries (in seconds)
+# exponential_base: 2    # Multiplier for backoff (e.g., 1, 2, 4, 8 seconds if base is 2) - default is 2
+# jitter: true           # Adds random jitter to backoff times to avoid thundering herd - default is true
 input_dir: input
 output_dir: output
 examples_dir: examples/examples.txt

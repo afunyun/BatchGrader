@@ -14,11 +14,9 @@ Columns:
     - Progress
     - Error Info
 """
+
 from rich import box
 from rich.console import Console
-from rich.live import Live
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
-from rich.progress_bar import ProgressBar
 from rich.table import Table
 
 
@@ -44,7 +42,7 @@ class RichJobTable:
                 "in_progress": "cyan",
                 "completed": "green",
                 "failed": "red",
-                "error": "red"
+                "error": "red",
             }.get(job.status, "white")
             status_emoji = {
                 "pending": "⏳",
@@ -53,22 +51,29 @@ class RichJobTable:
                 "in_progress": "🔄",
                 "completed": "✅",
                 "failed": "❌",
-                "error": "❌"
+                "error": "❌",
             }.get(job.status, "•")
-            status_str = f"{status_emoji} [{status_color}]{job.status.upper()}[/{status_color}]"
+            status_str = (
+                f"{status_emoji} [{status_color}]{job.status.upper()}[/{status_color}]"
+            )
             # Progress bar or percent
             if job.status == "completed":
                 progress_str = "[green]█ 100%[/green]"
             elif job.status in ("failed", "error"):
                 progress_str = "[red]█ 0%[/red]"
-            elif job.status in ("pending", ):
+            elif job.status in ("pending"):
                 progress_str = "[yellow]░ 0%[/yellow]"
+            elif job.status in ("submitted"):
+                progress_str = "[cyan]░ 0%[/cyan]"
             else:
                 progress_str = "[cyan]▒ ...[/cyan]"
             table.add_row(
                 getattr(job, "chunk_id_str", getattr(job, "name", "?")),
-                getattr(job, "openai_batch_id", "-"), status_str, progress_str,
-                str(getattr(job, "error_message", "")) or "")
+                getattr(job, "openai_batch_id", "-"),
+                status_str,
+                progress_str,
+                str(getattr(job, "error_message", "")) or "",
+            )
         return table
 
 
@@ -78,14 +83,13 @@ def print_summary_table(jobs):
     """
     console = Console()
     total = len(jobs)
-    succeeded = sum(1 for j in jobs
-                    if getattr(j, 'status', None) == 'completed')
-    failed = sum(1 for j in jobs if getattr(j, 'status', None) == 'failed')
-    errored = sum(1 for j in jobs if getattr(j, 'status', None) == 'error')
+    succeeded = sum(getattr(j, "status", None) == "completed" for j in jobs)
+    failed = sum(getattr(j, "status", None) == "failed" for j in jobs)
+    errored = sum(getattr(j, "status", None) == "error" for j in jobs)
     total_tokens = sum(
-        getattr(j, 'input_tokens', 0) + getattr(j, 'output_tokens', 0)
+        getattr(j, "input_tokens", 0) + getattr(j, "output_tokens", 0)
         for j in jobs)
-    total_cost = sum(getattr(j, 'cost', 0.0) for j in jobs)
+    total_cost = sum(getattr(j, "cost", 0.0) for j in jobs)
     table = Table(title="BatchGrader Job Summary", show_lines=True)
     table.add_column("Total Jobs", justify="right")
     table.add_column("Succeeded", style="green", justify="right")
@@ -93,6 +97,12 @@ def print_summary_table(jobs):
     table.add_column("Errored", style="yellow", justify="right")
     table.add_column("Total Tokens", justify="right")
     table.add_column("Total Cost ($)", justify="right")
-    table.add_row(str(total), str(succeeded), str(failed), str(errored),
-                  str(total_tokens), f"{total_cost:.4f}")
+    table.add_row(
+        str(total),
+        str(succeeded),
+        str(failed),
+        str(errored),
+        str(total_tokens),
+        f"{total_cost:.4f}",
+    )
     console.print(table)

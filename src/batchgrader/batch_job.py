@@ -33,30 +33,32 @@ Methods:
     get_progress_eta_str(): Returns a string with progress percentage and ETA.
 """
 
-from typing import Any, Dict, Optional, Union
+import datetime
 import os
 import threading
 import time
-import datetime
+from typing import Optional, Union
 
 import pandas as pd
 
 
 class BatchJob:
 
-    def __init__(self,
-                 chunk_id_str: str,
-                 chunk_df: Optional[pd.DataFrame],
-                 system_prompt: str,
-                 response_field: str,
-                 original_filepath: str,
-                 chunk_file_path: str,
-                 llm_model: Optional[str] = None,
-                 api_key_prefix: Optional[str] = None,
-                 status: str = "pending",
-                 error_message: Optional[str] = None,
-                 error_details: Optional[str] = None,
-                 result_data: Optional[Union[pd.DataFrame, dict]] = None):
+    def __init__(
+        self,
+        chunk_id_str: str,
+        chunk_df: Optional[pd.DataFrame],
+        system_prompt: str,
+        response_field: str,
+        original_filepath: str,
+        chunk_file_path: str,
+        llm_model: Optional[str] = None,
+        api_key_prefix: Optional[str] = None,
+        status: str = "pending",
+        error_message: Optional[str] = None,
+        error_details: Optional[str] = None,
+        result_data: Optional[Union[pd.DataFrame, dict]] = None,
+    ):
 
         self.chunk_id_str = chunk_id_str
         self.chunk_df = chunk_df
@@ -67,7 +69,7 @@ class BatchJob:
         self.llm_model = llm_model
         self.api_key_prefix = api_key_prefix
 
-        self.status = status
+        self._status = status
         self.error_message = error_message
         self.error_details = error_details
         self.result_data = result_data
@@ -84,47 +86,108 @@ class BatchJob:
         self.processed_items: int = 0
         self.start_time: Optional[float] = None
         self.estimated_completion_time: Optional[datetime.datetime] = None
-        
+
         # Thread safety
-        self._lock = threading.Lock()  # Protects access to progress-related attributes
+        self._lock = threading.Lock(
+        )  # Protects access to progress-related attributes
+
+    @property
+    def status(self) -> str:
+        return self._status
+
+    @status.setter
+    def status(self, new_status: str):
+        """
+        Allows state transitions for BatchJob.status according to real-world and test-driven expectations:
+        - Any state can transition to an error state: "error" or "failed".
+        - "error" or "failed" can transition to "completed" (to support recovery/reprocessing).
+        - Allow self-transition as a no-op.
+        - Allow forward progress through transient states: pending → submitted → polling → in_progress → running → completed.
+        - Allow skipping intermediate states to a terminal state ("completed", "failed", "error").
+        - Disallow backward transitions (e.g., "completed" → "running") except as above.
+        - Documented transitions:
+          * (any) → "error" or "failed"
+          * "error"/"failed" → "completed"
+          * (any) → itself (no-op)
+          * "pending" → "submitted"/"polling"/"in_progress"/"running"/"completed"
+          * "submitted" → "polling"/"in_progress"/"running"/"completed"
+          * "polling" → "in_progress"/"running"/"completed"
+          * "in_progress" → "running"/"completed"
+          * "running" → "completed"
+        - All other transitions raise ValueError.
+
+        This policy supports batch job error handling, late completions, and recovery as required by tests and production scenarios.
+        """
+        allowed_statuses = {
+            "pending", "submitted", "polling", "in_progress", "running",
+            "completed", "failed", "error"
+        }
+        old_status = self._status
+        if new_status == old_status:
+            return
+        if new_status not in allowed_statuses:
+            raise ValueError(f"Invalid status value: {new_status}")
+        # Any state may go to "error" or "failed"
+        if new_status in {"error", "failed"}:
+            self._status = new_status
+            return
+        # Allow recovery: error/failed → completed
+        if old_status in {"error", "failed"} and new_status == "completed":
+            self._status = new_status
+            return
+        # Allow forward transitions and skips to terminal states
+        order = [
+            "pending", "submitted", "polling", "in_progress", "running",
+            "completed"
+        ]
+        if old_status in order and new_status in order:
+            old_idx = order.index(old_status)
+            new_idx = order.index(new_status)
+            if new_idx >= old_idx:
+                self._status = new_status
+                return
+        raise ValueError(
+            f"Invalid state transition from {old_status} to {new_status}")
 
     def update_progress(self, items_processed_increment: int):
         """Updates the progress of the job.
-        
+
         This method is thread-safe and can be called from multiple threads.
-        
+
         Args:
             items_processed_increment: Number of items processed since last update (must be positive)
-            
+
         Raises:
             ValueError: If items_processed_increment is not positive
         """
         if items_processed_increment <= 0:
-            raise ValueError("items_processed_increment must be a positive integer")
-            
+            raise ValueError(
+                "items_processed_increment must be a positive integer")
+
         with self._lock:
             if self.start_time is None and self.total_items > 0:
                 self.start_time = time.monotonic()
-                
+
             self.processed_items += items_processed_increment
-            self.processed_items = min(self.processed_items, self.total_items)  # Cap at total_items
+            self.processed_items = min(self.processed_items,
+                                       self.total_items)  # Cap at total_items
 
             if self.total_items > 0:  # Only calculate if there are items
                 if self.processed_items == self.total_items:  # Job completed
                     self.estimated_completion_time = datetime.datetime.now()
-                elif self.processed_items > 0 and self.start_time is not None:  # Job in progress
+                elif (self.processed_items > 0
+                      and self.start_time is not None):  # Job in progress
                     elapsed_time = time.monotonic() - self.start_time
                     time_per_item = elapsed_time / self.processed_items
                     remaining_items = self.total_items - self.processed_items
                     remaining_time_seconds = remaining_items * time_per_item
                     self.estimated_completion_time = (
-                        datetime.datetime.now() + 
-                        datetime.timedelta(seconds=remaining_time_seconds)
-                    )
+                        datetime.datetime.now() +
+                        datetime.timedelta(seconds=remaining_time_seconds))
 
     def get_progress_eta_str(self) -> str:
         """Returns a string with progress percentage and ETA.
-        
+
         The completion state is determined by comparing processed_items with total_items
         rather than relying on external status to avoid synchronization issues.
         """
@@ -137,7 +200,8 @@ class BatchJob:
         if self.estimated_completion_time and self.processed_items == self.total_items:
             eta_str = "Completed"
         elif self.estimated_completion_time:
-            eta_str = self.estimated_completion_time.strftime("%Y-%m-%d %H:%M:%S")
+            eta_str = self.estimated_completion_time.strftime(
+                "%Y-%m-%d %H:%M:%S")
         elif self.processed_items == 0:
             eta_str = "Started, calculating ETA..."
         else:

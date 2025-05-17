@@ -2,14 +2,12 @@
 Unit tests for the log_utils module.
 """
 
-import os
-import pytest
-import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open, Mock
-from unittest.mock import call
+from unittest.mock import MagicMock, mock_open, patch
 
-from src.log_utils import prune_logs_if_needed
+import pytest
+
+from batchgrader.log_utils import prune_logs_if_needed
 
 
 @pytest.fixture
@@ -107,7 +105,7 @@ def test_prune_logs_if_needed_move_and_delete(setup_log_dirs):
     assert archive_count == 2  # After moving and pruning
 
 
-# @patch('src.log_utils.Path') # Removing mock-based test due to persistent Path patching issues
+# @patch('batchgrader.log_utils.Path') # Removing mock-based test due to persistent Path patching issues
 # def test_prune_logs_if_needed_creates_directories(mock_path_constructor):
 def test_prune_logs_if_needed_creates_directories(tmp_path):
     """Test that directories are created if they don't exist, using real fs."""
@@ -119,11 +117,13 @@ def test_prune_logs_if_needed_creates_directories(tmp_path):
     assert not non_existent_archive_dir.exists()
 
     # Patch open for the prune.log file handling as it's not the focus here
-    with patch('builtins.open', mock_open()):
-        prune_logs_if_needed(str(non_existent_log_dir),
-                             str(non_existent_archive_dir),
-                             max_logs=3,
-                             max_archive=2)
+    with patch("builtins.open", mock_open()):
+        prune_logs_if_needed(
+            str(non_existent_log_dir),
+            str(non_existent_archive_dir),
+            max_logs=3,
+            max_archive=2,
+        )
 
     # Should have created both directories
     assert non_existent_log_dir.exists()
@@ -167,42 +167,44 @@ def test_prune_logs_if_needed_creates_directories(tmp_path):
     #                                                 exist_ok=True)
 
 
-@patch('os.listdir')
-@patch('os.path.isfile')
-@patch('os.path.getmtime')
-@patch('shutil.move')
-@patch('os.remove')
+@patch("os.listdir")
+@patch("os.path.isfile")
+@patch("os.path.getmtime")
+@patch("shutil.move")
+@patch("os.remove")
 def test_prune_logs_with_mocks(mock_remove, mock_move, mock_getmtime,
                                mock_isfile, mock_listdir):
     """Test pruning logs using mocks to avoid file system operations."""
     # Setup mocks
     mock_listdir.side_effect = lambda path: ([
-        'log1.log', 'log2.log', 'log3.log', 'log4.log', '.keep'
-    ] if 'archive' not in str(path) else ['old1.log', 'old2.log', 'old3.log'])
+        "log1.log", "log2.log", "log3.log", "log4.log", ".keep"
+    ] if "archive" not in str(path) else ["old1.log", "old2.log", "old3.log"])
     mock_isfile.return_value = True
 
     # Return descending modification times (newest first) for main logs
     # and ascending times for archive (oldest first)
     def mock_getmtime_func(path):
-        # Normalize path for platform independence
-        normalized_path = str(path).replace('\\', '/')
-
-        if 'archive' not in normalized_path:
-            if 'log1.log' in normalized_path: return 1  # oldest
-            if 'log2.log' in normalized_path: return 2
-            if 'log3.log' in normalized_path: return 3
-            if 'log4.log' in normalized_path: return 4  # newest
-        else:
-            if 'old1.log' in normalized_path: return 1  # oldest
-            if 'old2.log' in normalized_path: return 2
-            if 'old3.log' in normalized_path: return 3  # newest
-        return 0  # for .keep and other files
+        normalized_path = str(path).lower()
+        log_times = {
+            "current.log": 10,
+            "old1.log": 1,
+            "old2.log": 2,
+            "old3.log": 3,
+        }
+        # Use dictionary comprehension to find matching log name in the path
+        matching_logs = {
+            name: time
+            for name, time in log_times.items() if name in normalized_path
+        }
+        # Return the mtime of the first match if any, otherwise default to 0
+        return next(iter(matching_logs.values()),
+                    0)  # 0 for .keep and other files
 
     mock_getmtime.side_effect = mock_getmtime_func
 
     # Call the function with max_logs=3 and max_archive=2
-    with patch('builtins.open', mock_open()), \
-         patch('pathlib.Path') as mock_path:
+    with patch("builtins.open",
+               mock_open()), patch("pathlib.Path") as mock_path:
 
         # Mock Path instances
         mock_log_path = MagicMock()
@@ -212,11 +214,11 @@ def test_prune_logs_with_mocks(mock_remove, mock_move, mock_getmtime,
         # Mock iterdir() to return Path objects
         mock_log_path.iterdir.return_value = [
             Path("/test/logs") / f
-            for f in ['log1.log', 'log2.log', 'log3.log', 'log4.log', '.keep']
+            for f in ["log1.log", "log2.log", "log3.log", "log4.log", ".keep"]
         ]
         mock_archive_path.iterdir.return_value = [
             Path("/test/logs/archive") / f
-            for f in ['old1.log', 'old2.log', 'old3.log']
+            for f in ["old1.log", "old2.log", "old3.log"]
         ]
 
         prune_logs_if_needed("/test/logs",

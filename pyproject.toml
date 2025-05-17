@@ -1,8 +1,9 @@
 [tool.poetry]
-name = "project"
+name = "batchgrader"
 version = "0.6.1.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
+packages = [{ include = "batchgrader", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.9"

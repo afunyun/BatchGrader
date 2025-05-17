@@ -8,7 +8,7 @@ Example usage:
     ```python
     # Initialize client
     client = get_llm_client()
-    
+
     # Process with token checking
     result = process_with_token_check(
         df=dataframe,
@@ -18,29 +18,24 @@ Example usage:
         token_limit=1000,
         process_func=process_function
     )
-    
+
     if result.success:
         print(f"Processed {len(result.data)} rows")
     ```
 """
-
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Generic, Optional, TypeVar
 
-import pandas as pd
+from batchgrader.llm_client import LLMClient
 
-from src.llm_client import LLMClient
-
-# Type variable for DataFrame-like objects
-DataFrameT = TypeVar('DataFrameT', bound=pd.DataFrame)
-T = TypeVar('T', bound=pd.DataFrame)
+T = TypeVar("T")
 
 
 @dataclass
 class ProcessingResult(Generic[T]):
     """Generic result container for processing operations.
-    
+
     Attributes:
         success: Whether the processing was successful
         data: Processed data (if successful)
@@ -50,6 +45,7 @@ class ProcessingResult(Generic[T]):
         end_time: Timestamp when processing ended
         duration: Processing duration in seconds (calculated if end_time is set)
     """
+
     success: bool
     data: Optional[T] = None
     error: Optional[Exception] = None
@@ -65,28 +61,28 @@ class ProcessingResult(Generic[T]):
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary.
-        
+
         Returns:
             Dictionary representation of the result
         """
         return {
-            'success': self.success,
-            'data':
-            self.data.to_dict('records') if self.data is not None else None,
-            'error': str(self.error) if self.error else None,
-            'token_usage': self.token_usage,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
-            'duration': self.duration
+            "success": self.success,
+            "data":
+            self.data.to_dict("records") if self.data is not None else None,
+            "error": str(self.error) if self.error else None,
+            "token_usage": self.token_usage,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "duration": self.duration,
         }
 
     @classmethod
-    def from_exception(cls, error: Exception) -> 'ProcessingResult':
+    def from_exception(cls, error: Exception) -> "ProcessingResult":
         """Create a failed result from an exception.
-        
+
         Args:
             error: Exception that occurred
-            
+
         Returns:
             ProcessingResult with error state
         """
@@ -94,28 +90,30 @@ class ProcessingResult(Generic[T]):
                    error=error,
                    end_time=datetime.now(timezone.utc).timestamp())
 
-    def with_data(self, data: T) -> 'ProcessingResult[T]':
+    def with_data(self, data: T) -> "ProcessingResult[T]":
         """Create a new result with updated data.
-        
+
         Args:
             data: New data to include in the result
-            
+
         Returns:
             New ProcessingResult with updated data
         """
-        return ProcessingResult(success=self.success,
-                                data=data,
-                                error=self.error,
-                                token_usage=dict(self.token_usage),
-                                start_time=self.start_time,
-                                end_time=self.end_time,
-                                duration=self.duration)
+        return ProcessingResult(
+            success=self.success,
+            data=data,
+            error=self.error,
+            token_usage=dict(self.token_usage),
+            start_time=self.start_time,
+            end_time=self.end_time,
+            duration=self.duration,
+        )
 
 
 def get_llm_client() -> LLMClient:
     """
     Get a properly initialized LLM client.
-    
+
     Returns:
         Initialized LLMClient instance
     """

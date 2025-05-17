@@ -1,22 +1,28 @@
 input_dir: tests/input
 output_dir: tests/output
 max_simultaneous_batches: 3
+
 input_splitter_options:
-    force_chunk_count: 3
-    split_token_limit: 4
-halt_on_chunk_failure: false 
+  force_chunk_count: 3
+  split_token_limit: 4
+
+halt_on_chunk_failure: false
 response_field: text
-openai_model_name: gpt-4o-mini-2024-07-18 
+openai_model_name: gpt-4o-mini-2024-07-18
+
 prompts:
-    system_prompt: "You are a helpful assistant."
+  system_prompt: You are a helpful assistant.
+
 llm_client_options:
-    api_key: "sk-test"
+  api_key: sk-test
+
 output_options:
-    output_filename_template: "output_{original_filename}.csv"
-    output_base_dir: "tests/output"
+  output_filename_template: output_{original_filename}.csv
+  output_base_dir: tests/output
+
 input_options:
-    # input_file_path: "will_be_overridden_by_test.csv" # Placeholder, test will provide actual path
-    id_column: "id"                                   # Or whatever your ID column is named in large_chunk.csv
-    prompt_column: "text_content"                     # Or whatever your text column is named in large_chunk.csv
-    # You might also have encoding, error_handling etc. here if needed,
-    # but id_column and prompt_column are key.    
+  # input_file_path: will_be_overridden_by_test.csv  # Placeholder, test will provide actual path
+  id_column: id # Or whatever your ID column is named in large_chunk.csv
+  prompt_column: text_content # Or whatever your text column is named in large_chunk.csv
+  # You might also have encoding, error_handling etc. here if needed,
+  # but id_column and prompt_column are key.

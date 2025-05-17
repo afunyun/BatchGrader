@@ -1,0 +1,6 @@
+custom_id,text_content,extra_col
+item_001,This is the first item for reprocessing.,original_val_1
+item_002,This is the second item that will fail initially.,original_val_2
+item_003,This is a third item for reprocessing.,original_val_3
+item_004,This is the fourth item that will also fail.,original_val_4
+item_005,This is a fifth item that should not be reprocessed.,original_val_5

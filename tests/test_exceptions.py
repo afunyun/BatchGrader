@@ -1,28 +1,28 @@
 """
 Unit tests for the custom exceptions.
 """
+
 import pytest
 
-from src.exceptions import (
+from batchgrader.exceptions import (  # Add other exceptions from batchgrader.exceptions.py if any are missing
+    APIError, BatchGraderError, ChunkingError, DataValidationError,
+    FileFormatError, FilePermissionError, FileProcessingError,
+    OutputDirectoryError, TokenLimitError, BatchGraderFileNotFoundError,
+)
+
+# Attempt to get all exceptions defined in src.exceptions that are subclasses of BatchGraderError
+# This is a bit more robust if new exceptions are added.
+EXCEPTION_MODULE_CLASSES = [
     BatchGraderError,
     FileProcessingError,
-    FileNotFoundError,  # Note: This shadows built-in FileNotFoundError if not careful with imports
+    BatchGraderFileNotFoundError,
     FilePermissionError,
     FileFormatError,
     OutputDirectoryError,
     DataValidationError,
     TokenLimitError,
     ChunkingError,
-    APIError
-    # Add other exceptions from src.exceptions.py if any are missing
-)
-
-# Attempt to get all exceptions defined in src.exceptions that are subclasses of BatchGraderError
-# This is a bit more robust if new exceptions are added.
-EXCEPTION_MODULE_CLASSES = [
-    BatchGraderError, FileProcessingError, FileNotFoundError,
-    FilePermissionError, FileFormatError, OutputDirectoryError,
-    DataValidationError, TokenLimitError, ChunkingError, APIError
+    APIError,
 ]
 
 # You might need to check src/exceptions.py for the full list if more exist.
@@ -30,9 +30,16 @@ EXCEPTION_MODULE_CLASSES = [
 # If ConfigError or others exist, please add them to the import and the list below.
 
 ALL_TESTED_EXCEPTIONS = [
-    BatchGraderError, FileProcessingError, FileNotFoundError,
-    FilePermissionError, FileFormatError, OutputDirectoryError,
-    DataValidationError, TokenLimitError, ChunkingError, APIError
+    BatchGraderError,
+    FileProcessingError,
+    BatchGraderFileNotFoundError,
+    FilePermissionError,
+    FileFormatError,
+    OutputDirectoryError,
+    DataValidationError,
+    TokenLimitError,
+    ChunkingError,
+    APIError,
     # e.g., ConfigError, if it exists
 ]
 
@@ -48,7 +55,7 @@ def test_exception_can_be_raised_and_caught(exception_class):
 def test_file_processing_error_inheritance():
     """Test that FileProcessingError subclasses inherit correctly."""
     assert issubclass(FileProcessingError, BatchGraderError)
-    assert issubclass(FileNotFoundError, FileProcessingError)
+    assert issubclass(BatchGraderFileNotFoundError, FileProcessingError)
     assert issubclass(FilePermissionError, FileProcessingError)
     assert issubclass(FileFormatError, FileProcessingError)
     assert issubclass(OutputDirectoryError, FileProcessingError)

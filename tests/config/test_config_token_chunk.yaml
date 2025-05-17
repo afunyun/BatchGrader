@@ -1,4 +1,3 @@
-
 input_dir: tests/input
 output_dir: tests/output
 max_simultaneous_batches: 2

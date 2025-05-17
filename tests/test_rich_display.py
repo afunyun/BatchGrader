@@ -2,26 +2,29 @@
 Unit tests for the rich_display module.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, call
 from rich.console import Console
 from rich.table import Table
 
-from src.rich_display import RichJobTable, print_summary_table
+from batchgrader.rich_display import RichJobTable, print_summary_table
 
 
 class MockBatchJob:
     """Mock BatchJob class for testing."""
 
-    def __init__(self,
-                 name="test_job",
-                 chunk_id_str="chunk_1",
-                 status="pending",
-                 openai_batch_id="batch_123",
-                 error_message=None,
-                 input_tokens=1000,
-                 output_tokens=500,
-                 cost=0.015):
+    def __init__(
+        self,
+        name="test_job",
+        chunk_id_str="chunk_1",
+        status="pending",
+        openai_batch_id="batch_123",
+        error_message=None,
+        input_tokens=1000,
+        output_tokens=500,
+        cost=0.015,
+    ):
         self.name = name
         self.chunk_id_str = chunk_id_str
         self.status = status
@@ -43,23 +46,31 @@ def mock_jobs():
     """Create a list of mock jobs with different statuses."""
     return [
         MockBatchJob(name="job1", chunk_id_str="chunk_1", status="pending"),
-        MockBatchJob(name="job2",
-                     chunk_id_str="chunk_2",
-                     status="submitted",
-                     openai_batch_id="batch_456"),
-        MockBatchJob(name="job3",
-                     chunk_id_str="chunk_3",
-                     status="in_progress",
-                     openai_batch_id="batch_789"),
-        MockBatchJob(name="job4",
-                     chunk_id_str="chunk_4",
-                     status="completed",
-                     openai_batch_id="batch_101"),
-        MockBatchJob(name="job5",
-                     chunk_id_str="chunk_5",
-                     status="failed",
-                     openai_batch_id="batch_202",
-                     error_message="API error")
+        MockBatchJob(
+            name="job2",
+            chunk_id_str="chunk_2",
+            status="submitted",
+            openai_batch_id="batch_456",
+        ),
+        MockBatchJob(
+            name="job3",
+            chunk_id_str="chunk_3",
+            status="in_progress",
+            openai_batch_id="batch_789",
+        ),
+        MockBatchJob(
+            name="job4",
+            chunk_id_str="chunk_4",
+            status="completed",
+            openai_batch_id="batch_101",
+        ),
+        MockBatchJob(
+            name="job5",
+            chunk_id_str="chunk_5",
+            status="failed",
+            openai_batch_id="batch_202",
+            error_message="API error",
+        ),
     ]
 
 
@@ -90,9 +101,9 @@ def test_build_table(mock_jobs):
 
 def test_build_table_status_formatting(mock_jobs):
     """Test that job statuses are properly formatted in the table."""
-    with patch('rich.table.Table.add_row') as mock_add_row:
+    with patch("rich.table.Table.add_row") as mock_add_row:
         table = RichJobTable()
-        result = table.build_table(mock_jobs)
+        table.build_table(mock_jobs)
 
         # Check colors and emojis for different statuses
         calls = mock_add_row.call_args_list
@@ -121,9 +132,9 @@ def test_build_table_status_formatting(mock_jobs):
 
 def test_build_table_progress_formatting(mock_jobs):
     """Test that progress indicators are properly formatted in the table."""
-    with patch('rich.table.Table.add_row') as mock_add_row:
+    with patch("rich.table.Table.add_row") as mock_add_row:
         table = RichJobTable()
-        result = table.build_table(mock_jobs)
+        table.build_table(mock_jobs)
 
         calls = mock_add_row.call_args_list
 
@@ -143,7 +154,7 @@ def test_build_table_progress_formatting(mock_jobs):
         assert "[red]█ 0%" in calls[4][0][3]
 
 
-@patch('rich.console.Console.print')
+@patch("rich.console.Console.print")
 def test_print_summary_table(mock_print, mock_jobs):
     """Test printing a summary table with job statistics."""
     print_summary_table(mock_jobs)
@@ -157,10 +168,10 @@ def test_print_summary_table(mock_print, mock_jobs):
     # Can't easily check the exact table content without more mocking
 
 
-@patch('rich.table.Table.add_row')
+@patch("rich.table.Table.add_row")
 def test_print_summary_table_content(mock_add_row, mock_jobs):
     """Test the content of the summary table."""
-    with patch('rich.console.Console.print'):
+    with patch("rich.console.Console.print"):
         print_summary_table(mock_jobs)
 
     # Should have been called once with the computed statistics

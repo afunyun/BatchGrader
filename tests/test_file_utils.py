@@ -2,12 +2,9 @@
 Unit tests for the file_utils module.
 """
 
-import os
-from pathlib import Path
 import pytest
-from unittest.mock import patch, mock_open, MagicMock, call, Mock
 
-from src.file_utils import prune_chunked_dir
+from batchgrader.file_utils import prune_chunked_dir
 
 
 @pytest.fixture

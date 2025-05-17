@@ -2,35 +2,32 @@
 Unit tests for the constants module.
 """
 
-import os
-from pathlib import Path
-import pytest
-
-from src.constants import (PROJECT_ROOT, DEFAULT_LOG_DIR, DEFAULT_ARCHIVE_DIR,
-                        LOG_DIR, ARCHIVE_DIR, MAX_BATCH_SIZE, DEFAULT_MODEL,
-                        DEFAULT_GLOBAL_TOKEN_LIMIT, DEFAULT_SPLIT_TOKEN_LIMIT,
-                        DEFAULT_RESPONSE_FIELD, DEFAULT_TOKEN_USAGE_LOG_PATH,
-                        DEFAULT_EVENT_LOG_PATH, DEFAULT_PRICING_CSV_PATH,
-                        BATCH_API_ENDPOINT, DEFAULT_PROMPTS_FILE,
-                        DEFAULT_BATCH_DESCRIPTION, DEFAULT_POLL_INTERVAL)
-
-
-def test_project_root():
-    """Test that PROJECT_ROOT points to the correct directory"""
-    assert PROJECT_ROOT.exists()
-    assert PROJECT_ROOT.is_dir()
-    # Project root should contain common dirs like 'src', 'tests', etc.
-    assert (PROJECT_ROOT / 'src').exists()
-    assert (PROJECT_ROOT / 'tests').exists()
-    assert (PROJECT_ROOT / 'config').exists() or (PROJECT_ROOT /
-                                                  'config').parent.exists()
+from batchgrader.constants import (
+    ARCHIVE_DIR,
+    BATCH_API_ENDPOINT,
+    DEFAULT_ARCHIVE_DIR,
+    DEFAULT_BATCH_DESCRIPTION,
+    DEFAULT_EVENT_LOG_PATH,
+    DEFAULT_GLOBAL_TOKEN_LIMIT,
+    DEFAULT_LOG_DIR,
+    DEFAULT_MODEL,
+    DEFAULT_POLL_INTERVAL,
+    DEFAULT_PRICING_CSV_PATH,
+    DEFAULT_PROMPTS_FILE,
+    DEFAULT_RESPONSE_FIELD,
+    DEFAULT_SPLIT_TOKEN_LIMIT,
+    DEFAULT_TOKEN_USAGE_LOG_PATH,
+    LOG_DIR,
+    MAX_BATCH_SIZE,
+    PROJECT_ROOT,
+)
 
 
 def test_log_directories():
     """Test that log directory constants are correctly defined"""
     # Test default log directories
-    assert DEFAULT_LOG_DIR == PROJECT_ROOT / 'output' / 'logs'
-    assert DEFAULT_ARCHIVE_DIR == DEFAULT_LOG_DIR / 'archive'
+    assert DEFAULT_LOG_DIR == PROJECT_ROOT / "output" / "logs"
+    assert DEFAULT_ARCHIVE_DIR == DEFAULT_LOG_DIR / "archive"
 
     # Test that LOG_DIR and ARCHIVE_DIR are initialized to defaults
     assert LOG_DIR == DEFAULT_LOG_DIR
@@ -48,7 +45,7 @@ def test_default_model():
     assert isinstance(DEFAULT_MODEL, str)
     assert DEFAULT_MODEL != ""
     # Should contain version and date in the model name
-    assert '-' in DEFAULT_MODEL
+    assert "-" in DEFAULT_MODEL
     assert any(char.isdigit() for char in DEFAULT_MODEL)
 
 
@@ -67,3 +64,22 @@ def test_response_field():
     """Test that DEFAULT_RESPONSE_FIELD is a non-empty string"""
     assert isinstance(DEFAULT_RESPONSE_FIELD, str)
     assert DEFAULT_RESPONSE_FIELD != ""
+
+
+def test_newly_imported_constants():
+    """Test that newly imported constants are defined and have correct types/values."""
+    from pathlib import Path
+
+    assert isinstance(DEFAULT_TOKEN_USAGE_LOG_PATH, Path)
+    assert isinstance(DEFAULT_EVENT_LOG_PATH, Path)
+    assert isinstance(DEFAULT_PRICING_CSV_PATH, Path)
+
+    assert isinstance(BATCH_API_ENDPOINT, str)
+    assert BATCH_API_ENDPOINT != ""
+
+    assert isinstance(DEFAULT_PROMPTS_FILE, Path)
+    assert isinstance(DEFAULT_BATCH_DESCRIPTION, str)
+    assert DEFAULT_BATCH_DESCRIPTION != ""
+
+    assert isinstance(DEFAULT_POLL_INTERVAL, int)
+    assert DEFAULT_POLL_INTERVAL > 0

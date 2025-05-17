@@ -76,87 +76,6 @@ graph TD
     CLI --> LoggerUtil
 ```
 
-### 1.2 Detailed System Architecture (Claude's Version)
-
-```mermaid
-graph TD
-    subgraph "User Interface"
-        CLI[cli.py]
-    end
-
-    subgraph "Core Processing"
-        BR[batch_runner.py]
-        FP[file_processor.py]
-        IS[input_splitter.py]
-    end
-
-    subgraph "Job Management"
-        BJ[batch_job.py]
-    end
-
-    subgraph "API Integration"
-        LC[llm_client.py]
-        API[OpenAI API]
-    end
-
-    subgraph "Configuration"
-        CL[config_loader.py]
-        CONST[constants.py]
-    end
-
-    subgraph "Monitoring"
-        TT[token_tracker.py]
-        CE[cost_estimator.py]
-        LOG[logger.py]
-        RD[rich_display.py]
-    end
-
-    subgraph "Evaluation"
-        EVAL[evaluator.py]
-        PU[prompt_utils.py]
-    end
-
-    subgraph "Utilities"
-        UTILS[utils.py]
-        DL[data_loader.py]
-        EXCP[exceptions.py]
-    end
-
-    CLI --> BR
-    BR --> FP
-    BR --> IS
-    BR --> TT
-    BR --> PU
-
-    FP --> BJ
-    FP --> IS
-    FP --> LC
-    FP --> DL
-
-    LC --> API
-
-    BJ --> TT
-
-    CL --> BR
-    CONST --> BR
-    CONST --> FP
-    CONST --> LC
-
-    TT --> CE
-
-    LOG --> BR
-    LOG --> FP
-    LOG --> LC
-
-    RD --> BR
-    RD --> FP
-
-    PU --> EVAL
-
-    UTILS --> CL
-    UTILS --> LC
-```
-
 ### 1.3 Component Relationships (Claude's Version)
 
 ```mermaid
@@ -302,31 +221,6 @@ stateDiagram-v2
     Success --> [*]
 ```
 
-### 3.2 Batch Processing State Transitions (Claude's Version)
-
-```mermaid
-stateDiagram-v2
-    [*] --> pending
-    pending --> running
-    running --> completed : On success
-    running --> failed : API failure
-    running --> error : Local error
-    failed --> [*]
-    completed --> [*]
-    error --> [*]
-```
-
-```mermaid
-stateDiagram-v2
-    [*] --> Pending
-    Pending --> Running : start()
-    Running --> Success : all rows processed
-    Running --> Failure : error & halt_on_chunk_failure?
-    Running --> Pending : retry
-    Failure --> [*]
-    Success --> [*]
-```
-
 ## 4. Execution Paths
 
 ### 4.1 Concurrent Processing Flow
@@ -362,26 +256,6 @@ sequenceDiagram
 - File IO error → skip file, halt batch (configurable)
 - All errors logged with configurable recovery options
 
-```mermaid
-sequenceDiagram
-    participant CLI
-    participant Runner
-    participant Processor
-    participant Executor
-    participant LLM
-    participant OpenAI
-
-    CLI->>Runner: args
-    Runner->>Processor: filepath, config
-    Processor->>Executor: submit_job(chunk)
-    Executor->>LLM: run_batch_job()
-    LLM->>OpenAI: POST /batch
-    OpenAI-->>LLM: result_file_id
-    LLM-->>Executor: results
-    Executor-->>Processor: aggregated DataFrame
-    Processor-->>Runner: success/fail stats
-```
-
 ## 5. Token Management & Processing
 
 ### 5.1 Token Counting and Chunking Flow
@@ -410,34 +284,20 @@ classDiagram
         +get_token_usage()
         +calculate_costs()
     }
-    
+
     class CostEstimator {
         +get_model_cost()
         +estimate_batch_cost()
     }
-    
+
     class LLMClient {
         +run_batch_job()
         +_prepare_batch_requests()
         +_manage_batch_job()
     }
-    
+
     TokenTracker --> CostEstimator
     LLMClient --> TokenTracker
-```
-
-```mermaid
-flowchart TD
-    A[Start] --> B[Load Input File]
-    B --> C{Token Count > Limit?}
-    C -->|Yes| D[Split File]
-    D --> E[Create Chunks]
-    E --> F[Process Chunks]
-    C -->|No| G[Process Single Chunk]
-    F --> H[Aggregate Results]
-    G --> H
-    H --> I[Save Output]
-    I --> J[End]
 ```
 
 ## 6. Error Handling & Recovery
@@ -467,21 +327,6 @@ flowchart TD
 - **System Errors**: File I/O, memory issues
 
 Each error type has specific handling strategies and recovery mechanisms.
-
-```mermaid
-flowchart TD
-    A[Start Processing] --> B{API Call}
-    B -->|Success| C[Process Response]
-    B -->|Error| D{Retry?}
-    D -->|Yes| B
-    D -->|No| E[Log Error]
-    E --> F[Handle Failure]
-    C --> G[Next Chunk]
-    F --> G
-    G --> H{More Chunks?}
-    H -->|Yes| B
-    H -->|No| I[End Processing]
-```
 
 ## 7. Configuration Management
 
@@ -527,7 +372,7 @@ token_management:
 logging:
   level: INFO
   file: batch_grader.log
-  max_size: 10485760  # 10MB
+  max_size: 10485760 # 10MB
   backup_count: 5
 ```
 

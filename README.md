@@ -59,8 +59,7 @@ All configuration is managed via simple YAML.
      .venv\Scripts\activate.ps1
      ```
 
-     If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length f
-     rom every hair on their body. Please don't do that.
+     If you skip this step, 3-4 random people (selected globally) will lose 3 mm of length from every hair on their body. Please don't do that.
 
    - **Dependency Management**
 
@@ -70,7 +69,7 @@ All configuration is managed via simple YAML.
        ```powershell
        # Install in development mode with all dependencies
        pip install -e ".[dev]"
-       
+
        # Or using uv (faster):
        uv pip install -e "."
        ```

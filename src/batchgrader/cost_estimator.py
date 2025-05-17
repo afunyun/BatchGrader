@@ -1,11 +1,10 @@
 """
 Cost Estimator for OpenAI API batch pricing.
 """
+
 import csv
 import os
-from typing import Dict, Tuple, Optional
-
-from src.config_loader import load_config
+from typing import Dict, Optional, Tuple
 
 
 class CostEstimator:
@@ -13,7 +12,7 @@ class CostEstimator:
     Estimates API costs based on the pricing data in docs/pricing.csv.
 
     Note:
-        The pricing.csv file should use plain numbers (no $ or anything else) for prices. Example: 
+        The pricing.csv file should use plain numbers (no $ or anything else) for prices. Example:
         gpt-4.1-2025-04-14,1.00,4.00
 
     Usage:
@@ -21,19 +20,20 @@ class CostEstimator:
         cost = estimator.estimate_cost('gpt-4o-2024-08-06', 1200000, 800000)
         print(f"Estimated cost: ${cost:.4f}")
     """
+
     _pricing: Optional[Dict[str, Tuple[float, float]]] = None
     _csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                             'docs', 'pricing.csv')
+                             "docs", "pricing.csv")
 
     @classmethod
     def _load_pricing(cls):
         pricing = {}
-        with open(cls._csv_path, newline='', encoding='utf-8') as csvfile:
+        with open(cls._csv_path, newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)  # type: ignore[arg-type]
             for row in reader:
-                model = row['Model']
-                input_price = float(row['Input'])
-                output_price = float(row['Output'])
+                model = row["Model"]
+                input_price = float(row["Input"])
+                output_price = float(row["Output"])
                 pricing[model] = (input_price, output_price)
         cls._pricing = pricing
 
@@ -57,9 +57,9 @@ class CostEstimator:
         if model not in cls._pricing:
             raise ValueError(f"Model '{model}' not found in pricing table.")
         input_price, output_price = cls._pricing[model]
-        cost = (n_input_tokens / 1_000_000) * input_price + (
-            n_output_tokens / 1_000_000) * output_price
-        return cost
+        return (n_input_tokens / 1_000_000) * input_price + (
+            n_output_tokens / 1_000_000
+        ) * output_price
 
 
 if __name__ == "__main__":  # pragma: no cover

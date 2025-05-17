@@ -4,8 +4,8 @@ BatchGraderLogger: Configuration for application-wide logging.
 - File logs are written with standard formatting for post-mortem/debug.
 - Call setup_logging() at application entry point.
 """
+
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -35,7 +35,7 @@ logging.Logger.success = success
 
 
 def setup_logging(
-        log_dir: Path = Path('output/logs'), log_level: int = logging.INFO):
+        log_dir: Path = Path("output/logs"), log_level: int = logging.INFO):
     """Configures the application's root logger for console and file output.
 
     - Clears any existing handlers on the root logger.
@@ -58,8 +58,8 @@ def setup_logging(
     resolved_log_dir = Path(log_dir)
 
     resolved_log_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = resolved_log_dir / f'batchgrader_run_{timestamp}.log'
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = resolved_log_dir / f"batchgrader_run_{timestamp}.log"
 
     # Get the root logger, or a specific application base logger like logging.getLogger('batchgrader')
     # For simplicity, configuring the root logger here.
@@ -78,13 +78,14 @@ def setup_logging(
         show_level=True,
         show_path=False,  # Usually False for cleaner output
         rich_tracebacks=True,
-        log_time_format="[%X]")  # Example time format
+        log_time_format="[%X]",
+    )  # Example time format
     console_handler.setLevel(log_level)
 
-    file_handler = logging.FileHandler(str(log_file), encoding='utf-8')
+    file_handler = logging.FileHandler(str(log_file), encoding="utf-8")
     file_formatter = logging.Formatter(
-        '[%(asctime)s] %(name)s:%(levelname)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S')
+        "[%(asctime)s] %(name)s:%(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S")
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(log_level)
 
@@ -92,5 +93,4 @@ def setup_logging(
     app_logger.addHandler(file_handler)
 
     # Initial log message to confirm setup
-    logging.getLogger(__name__).info(
-        f"Logging setup complete. Log file: {log_file}")
+    app_logger.info(f"Logging setup complete. Log file: {log_file}")
